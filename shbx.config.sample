@@ -1,0 +1,17 @@
+# IP address to serve on. Set to "0.0.0.0" to serve on all interfaces.
+# Default : 127.0.0.1 (only accessible locally)
+ADDRESS = "127.0.0.1"
+
+# Port to serve on.
+# Default : 8000
+PORT = 8000
+
+# Path to the SQLite database file used by the app to store ShellBox's data. It will
+# be automatically created during the first launch, so write access to the containing
+# folder is required.
+# Default : "shbx.sqlite" (in the app's folder)
+DATABASE_PATH = "shbx.sqlite"
+
+# Path to the commands definition file.
+# Default : "commands.config" (in the app's folder)
+COMMANDS_PATH = "commands.config"

@@ -1,8 +1,27 @@
 [package]
-name = "ShellBox"
+name = "shbx"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+rocket = { version = "0.5.0-rc.3", features = ["secrets", "json"] }
+tokio-stream = { version = "0.1.11", features = ["fs"] }
+serde = { version = "1.0", features = ["derive"] }
+itertools = "0.11.0"
+toml = "0.7.5"
+rand = "0.8.5"
+base64 = "0.21.2"
+thiserror = "1.0.44"
+strum = { version = "0.25.0", features = ["derive"] }
+argon2 = "0.5.1"
+serde_repr = "0.1.16"
+
+[dependencies.rocket_dyn_templates]
+version = "0.1.0-rc.3"
+features = ["tera"]
+
+[dependencies.rocket_db_pools]
+version = "0.1.0-rc.3"
+features = ["sqlx_sqlite"]

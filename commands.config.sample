@@ -1,0 +1,4 @@
+[[command]]
+NAME = "custom_script"
+LABEL = "My custom script"
+PATH = "/usr/bin/custom_script.sh"
