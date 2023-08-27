@@ -457,7 +457,7 @@ pub async fn route_logout(user: User, session_store: &State<SessionStore>) -> Re
 }
 
 /// List the commands available to the current user
-#[get("/c")]
+#[get("/commands")]
 pub async fn route_commands_list(
     user: User,
     commands: &State<RwLock<Commands>>,
@@ -473,7 +473,7 @@ pub async fn route_commands_list(
 }
 
 /// Execute a command
-#[post("/c/<command_name>")]
+#[post("/commands/<command_name>")]
 pub async fn route_exec_command(
     user: User,
     commands: &State<RwLock<Commands>>,
@@ -514,7 +514,7 @@ pub async fn route_exec_command(
 }
 
 /// Get the list of users (admin only)
-#[get("/u")]
+#[get("/users")]
 pub async fn route_users_list_all(
     _user: AdminUser,
     commands: &State<RwLock<Commands>>,
@@ -542,7 +542,7 @@ pub async fn route_users_list_all(
 }
 
 /// Create a user (admin only)
-#[post("/u", data = "<new_user>")]
+#[post("/users", data = "<new_user>")]
 pub async fn route_user_create(
     _user: AdminUser,
     new_user: Result<Json<NewUser>, json::Error<'_>>,
@@ -606,7 +606,7 @@ pub async fn route_user_create(
 }
 
 /// Get a specific user based on its username (admin only)
-#[get("/u/<username>")]
+#[get("/users/<username>")]
 pub async fn route_user_get(
     _user: AdminUser,
     username: String,
@@ -636,7 +636,7 @@ pub async fn route_user_get(
 }
 
 /// Update a user (admin only)
-#[post("/u/<username>", data = "<updated_user>")]
+#[post("/users/<username>", data = "<updated_user>")]
 pub async fn route_user_update(
     _user: AdminUser,
     username: String,
@@ -703,7 +703,7 @@ pub async fn route_user_update(
 }
 
 /// Delete a user (admin only)
-#[delete("/u/<username>")]
+#[delete("/users/<username>")]
 pub async fn route_user_delete(
     _user: AdminUser,
     username: String,

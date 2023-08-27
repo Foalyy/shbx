@@ -15,11 +15,11 @@ NAME = "restart_nginx"
 LABEL = "Restart Nginx"
 EXEC = "systemctl restart nginx"
 
-[[command]]
-NAME = "custom_script"
-LABEL = "My custom script"
-EXEC = "/usr/bin/custom_script.sh"
-WORKING_DIR = "/home/user/"
+# [[command]]
+# NAME = "custom_script"
+# LABEL = "My custom script"
+# EXEC = "/usr/bin/custom_script.sh"
+# WORKING_DIR = "/home/user/"
 
 [[command]]
 NAME = "timeout"
