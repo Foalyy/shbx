@@ -75,8 +75,8 @@ pub async fn init_schema(rocket: Rocket<Build>) -> fairing::Result {
                             commands: Vec::new(),
                         };
                         match insert_user(&mut db_conn, admin).await {
-                            Ok(_) => println!(
-                                "Admin user created : login with user 'admin' and password '{password}'",
+                            Ok(api_key) => println!(
+                                "Admin user created : login with user 'admin' and password '{password}', or use API key '{api_key}'",
                             ),
                             Err(error) => {
                                 eprintln!("Error, unable to create the admin user : {error}");
@@ -155,19 +155,20 @@ pub async fn list_users(
 pub async fn insert_user(
     db_conn: &mut PoolConnection<Sqlite>,
     new_user: NewUser,
-) -> Result<(), Error> {
+) -> Result<ApiKey, Error> {
+    let api_key = ApiKey::new();
     let mut query_builder =
         QueryBuilder::new("INSERT INTO user(username, password, api_key, role, commands) VALUES (");
     let mut fields = query_builder.separated(", ");
     fields.push_bind(new_user.username);
     fields.push_bind(new_user.password.hash_with_random_salt());
-    fields.push_bind(ApiKey::new().to_string());
+    fields.push_bind(api_key.to_string());
     fields.push_bind(new_user.role.to_string());
     fields.push_bind(serde_json::to_string(&new_user.commands)?);
     fields.push_unseparated(")");
     let query = query_builder.build();
     query.execute(&mut *db_conn).await?;
-    Ok(())
+    Ok(api_key)
 }
 
 /// Find a user from the given username
