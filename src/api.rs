@@ -15,8 +15,8 @@ use rocket::{
 use rocket_db_pools::{sqlx, Connection};
 use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
-use std::{collections::HashMap, fmt::Display};
-use tokio::process;
+use std::{collections::HashMap, fmt::Display, process::Stdio, time::Duration};
+use tokio::{process, time::timeout};
 
 /// Kinds of responses that the API can return to the caller
 #[derive(Responder, Debug)]
@@ -57,6 +57,9 @@ pub enum Response {
 
     #[response(status = 500)]
     CommandFailed(Json<MessageResponse>),
+
+    #[response(status = 408)]
+    CommandTimeout(Json<MessageResponse>),
 
     #[response(status = 200)]
     CommandResult(Json<CommandResult>),
@@ -193,6 +196,15 @@ impl Response {
         }))
     }
 
+    /// Return a CommandTimeout response
+    pub fn command_timeout(timeout: Duration) -> Self {
+        Self::CommandTimeout(Json(MessageResponse {
+            result: ResultStatus::Error,
+            code: ResultCode::RequestTimeout,
+            message: format!("Command timeout after {}ms", timeout.as_millis()),
+        }))
+    }
+
     /// Return a UserCreated response
     pub fn user_created(username: String) -> Self {
         Self::UserCreated(Json(MessageResponse {
@@ -275,6 +287,7 @@ pub enum ResultCode {
     Unauthorized = 401,
     Forbidden = 403,
     NotFound = 404,
+    RequestTimeout = 408,
     Conflict = 409,
     Gone = 410,
     UnprocessableEntity = 422,
@@ -484,10 +497,16 @@ pub async fn route_exec_command(
             cmd
         };
         cmd.current_dir(command.working_dir);
-        let output = cmd.output().await;
-        match output {
-            Ok(output) => Response::CommandResult(Json(output.into())),
-            Err(error) => Response::command_failed(&error),
+        cmd.stdin(Stdio::piped());
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+        cmd.kill_on_drop(true);
+        let timeout_duration = Duration::from_millis(command.timeout_millis);
+        let timeout = timeout(timeout_duration, cmd.output()).await;
+        match timeout {
+            Ok(Ok(output)) => Response::CommandResult(Json(output.into())),
+            Ok(Err(error)) => Response::command_failed(&error),
+            Err(_) => Response::command_timeout(timeout_duration),
         }
     } else {
         Response::invalid_command()

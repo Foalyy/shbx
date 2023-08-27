@@ -20,3 +20,9 @@ NAME = "custom_script"
 LABEL = "My custom script"
 EXEC = "/usr/bin/custom_script.sh"
 WORKING_DIR = "/home/user/"
+
+[[command]]
+NAME = "timeout"
+LABEL = "Timeout test"
+TIMEOUT_MILLIS = 2000
+EXEC = "sleep 5"

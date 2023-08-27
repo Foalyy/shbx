@@ -39,6 +39,11 @@ pub struct Config {
     /// Default : (the system's temporary directory, such as /tmp on Unix)
     #[serde(default = "PathBuf::new")]
     pub working_dir: PathBuf,
+
+    /// Default timeout after which a command is killed, in milliseconds.
+    /// Default : 10000ms
+    #[serde(default = "config_default_timeout_millis")]
+    pub timeout_millis: u64,
 }
 
 impl Config {
@@ -113,6 +118,10 @@ fn config_default_database_path() -> PathBuf {
 
 fn config_default_commands_path() -> PathBuf {
     PathBuf::from("commands.config")
+}
+
+fn config_default_timeout_millis() -> u64 {
+    10000
 }
 
 /// Try to open the .secret file in the app's directory and return

@@ -17,6 +17,7 @@ pub struct CommandConfig {
     pub name: CommandName,
     pub label: Option<String>,
     pub shell: Option<bool>,
+    pub timeout_millis: Option<u64>,
     pub exec: String,
     pub working_dir: Option<PathBuf>,
 }
@@ -27,6 +28,8 @@ pub struct Command {
     pub name: String,
     pub label: String,
     pub shell: bool,
+    #[serde(skip)]
+    pub timeout_millis: u64,
     pub exec: String,
     #[serde(skip)]
     pub cmd: CommandExec,
@@ -124,6 +127,9 @@ impl Command {
             name,
             label,
             shell: command_config.shell.unwrap_or(false),
+            timeout_millis: command_config
+                .timeout_millis
+                .unwrap_or(config.timeout_millis),
             exec,
             cmd: CommandExec {
                 path: exec_path_cmd,

@@ -19,3 +19,7 @@ COMMANDS_PATH = "commands.config"
 # Path to the default working directory to execute the commands in.
 # Default : (the system's temporary directory, such as /tmp on Unix)
 #WORKING_DIR = ""
+
+# Default timeout after which a command is killed, in milliseconds.
+# Default : 10000ms
+#TIMEOUT_MILLIS = 10000
