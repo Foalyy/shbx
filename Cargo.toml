@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 rocket = { version = "0.5.0-rc.3", features = ["secrets", "json"] }
+tokio = { version = "1.6.1", features = ["process"] }
 tokio-stream = { version = "0.1.11", features = ["fs"] }
 serde = { version = "1.0", features = ["derive"] }
 itertools = "0.11.0"
@@ -17,6 +18,7 @@ thiserror = "1.0.44"
 strum = { version = "0.25.0", features = ["derive"] }
 argon2 = "0.5.1"
 serde_repr = "0.1.16"
+is_executable = "1.0.1"
 
 [dependencies.rocket_dyn_templates]
 version = "0.1.0-rc.3"

@@ -6,6 +6,7 @@ mod command;
 mod config;
 mod db;
 mod user;
+mod utils;
 
 use api::SessionStore;
 use command::{CommandConfigError, Commands};
@@ -18,6 +19,7 @@ use std::io;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use thiserror::Error;
+use tokio::sync::RwLock;
 
 #[launch]
 async fn rocket() -> _ {
@@ -55,6 +57,7 @@ async fn rocket() -> _ {
                 api::route_login,
                 api::route_logout,
                 api::route_commands_list,
+                api::route_exec_command,
                 api::route_users_list_all,
                 api::route_user_create,
                 api::route_user_get,
@@ -78,7 +81,7 @@ async fn rocket() -> _ {
             "Database schema init",
             db::init_schema,
         ))
-        .manage(Commands::read_or_exit(&config).await)
+        .manage(RwLock::new(Commands::read_or_exit(&config).await))
         .manage(SessionStore::new())
         .manage(config)
         .attach(AdHoc::on_liftoff("Startup message", move |_| {
@@ -93,22 +96,40 @@ async fn rocket() -> _ {
 pub enum Error {
     #[error("invalid request : \"{0}\"")]
     InvalidRequestError(PathBuf),
+
     #[error("error accessing the file at {1} : {0}")]
     FileError(io::Error, PathBuf),
+
     #[error("unable to parse the input as a TOML file : {0}")]
     TomlParserError(#[from] toml::de::Error),
+
     #[error("unable to parse or encode the given data as JSON : {0}")]
     JsonError(#[from] serde_json::error::Error),
+
     #[error("database error : {0}")]
     DatabaseError(#[from] sqlx::Error),
+
     #[error("enum parsing error : {0}")]
     EnumParserError(#[from] strum::ParseError),
-    #[error("invalid user : \"{0}\"")]
-    InvalidUser(String),
-    #[error("invalid command configuration : {0}")]
+
+    #[error("commands config file \"{0}\" not found, please check COMMANDS_PATH in the main config file")]
+    CommandsConfigFileNotFound(PathBuf),
+
+    #[error("invalid working dir \"{0}\", please check WORKING_DIR in the main config file : {1}")]
+    InvalidConfigWorkingDir(PathBuf, io::Error),
+
+    #[error("working dir \"{0}\" is not a valid directory, please check WORKING_DIR in the main config file")]
+    ConfigWorkingDirNotADir(PathBuf),
+
+    #[error("{0}")]
     CommandConfigError(#[from] CommandConfigError),
+
     #[error("duplicate command name \"{0}\" in config")]
     DuplicateCommandName(String),
+
+    #[error("invalid user : \"{0}\"")]
+    InvalidUser(String),
+
     #[error("other error : {0}")]
     OtherError(String),
 }

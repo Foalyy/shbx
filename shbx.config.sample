@@ -15,3 +15,7 @@ DATABASE_PATH = "shbx.sqlite"
 # Path to the commands definition file.
 # Default : "commands.config" (in the app's folder)
 COMMANDS_PATH = "commands.config"
+
+# Path to the default working directory to execute the commands in.
+# Default : (the system's temporary directory, such as /tmp on Unix)
+#WORKING_DIR = ""

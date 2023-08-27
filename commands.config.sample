@@ -1,4 +1,22 @@
 [[command]]
+NAME = "date"
+LABEL = "Return the server date"
+EXEC = "date"
+
+[[command]]
+NAME = "hi"
+LABEL = "Say hi !"
+SHELL = true
+EXEC = "echo \"[`date`] hi !\" | tee -a hi.txt"
+WORKING_DIR = "/tmp"
+
+[[command]]
+NAME = "restart_nginx"
+LABEL = "Restart Nginx"
+EXEC = "systemctl restart nginx"
+
+[[command]]
 NAME = "custom_script"
 LABEL = "My custom script"
-PATH = "/usr/bin/custom_script.sh"
+EXEC = "/usr/bin/custom_script.sh"
+WORKING_DIR = "/home/user/"

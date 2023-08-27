@@ -18,6 +18,7 @@ use rocket_db_pools::Connection;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use strum::{Display, EnumString};
+use tokio::sync::RwLock;
 
 /// A user that can log in the system
 #[derive(Debug, Serialize, Clone)]
@@ -30,6 +31,17 @@ pub struct User {
     #[serde(skip)]
     pub session_key: Option<ApiKey>,
     pub commands: Vec<CommandName>,
+}
+
+impl User {
+    pub fn update_with(&mut self, update: &UpdatedUser) {
+        if let Some(role) = update.role {
+            self.role = role;
+        }
+        if let Some(commands) = update.commands.clone() {
+            self.commands = commands;
+        }
+    }
 }
 
 /// Make [User] a request guard so that the current user can be directly recovered by the routes
@@ -89,7 +101,7 @@ impl<'r> FromRequest<'r> for User {
         };
 
         // Get the list of commands
-        let commands = match request.guard::<&State<Commands>>().await {
+        let commands = match request.guard::<&State<RwLock<Commands>>>().await {
             request::Outcome::Success(commands) => commands,
             _ => {
                 // Cannot access the list of commands. Something went wrong, this shouldn't happen.
@@ -103,7 +115,11 @@ impl<'r> FromRequest<'r> for User {
         };
 
         // Try to find a matching permanent API key in the database
-        match db::find_user_from_api_key(&mut db_conn, commands, &api_key).await {
+        let user = {
+            let commands = commands.read().await;
+            db::find_user_from_api_key(&mut db_conn, &commands, &api_key).await
+        };
+        match user {
             // User found in the database with this permanent API key, add it to the store and return it
             Ok(Some(user)) => {
                 session_store
@@ -205,7 +221,7 @@ pub struct UpdatedUser {
 }
 
 /// Available roles for users
-#[derive(Display, Serialize, Deserialize, EnumString, PartialEq, Clone, Debug)]
+#[derive(Display, Serialize, Deserialize, EnumString, PartialEq, Clone, Copy, Debug)]
 #[strum(serialize_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum UserRole {

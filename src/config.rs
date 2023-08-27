@@ -4,7 +4,6 @@ use rand::RngCore;
 use rocket::serde::Deserialize;
 use std::fs::File;
 use std::io::{self, Write};
-use std::path::Path;
 use std::{fs, path::PathBuf};
 
 /// Name of the main config file in the app's folder
@@ -35,22 +34,42 @@ pub struct Config {
     /// Default : "commands.config" (in the app's folder)
     #[serde(default = "config_default_commands_path")]
     pub commands_path: PathBuf,
+
+    /// Path to the default working directory to execute the commands in.
+    /// Default : (the system's temporary directory, such as /tmp on Unix)
+    #[serde(default = "PathBuf::new")]
+    pub working_dir: PathBuf,
 }
 
 impl Config {
-    /// Read the config file at the given location and return it as a simple String
-    pub fn read_path_as_string<P>(path: P) -> Result<String, Error>
-    where
-        P: AsRef<Path>,
-    {
-        fs::read_to_string(&path).map_err(|e| Error::FileError(e, PathBuf::from(path.as_ref())))
-    }
-
     /// Read the main config file and deserialize it into a Config struct
     pub fn read() -> Result<Self, Error> {
-        Ok(toml::from_str(
-            Self::read_path_as_string(FILENAME)?.as_str(),
-        )?)
+        // Read the config file and parse it as a Config struct
+        let path = PathBuf::from(FILENAME);
+        let file_content =
+            fs::read_to_string(&path).map_err(|e| Error::FileError(e, path.clone()))?;
+        let mut config: Config = toml::from_str(file_content.as_str())?;
+
+        // Check this config
+        if !config.commands_path.is_file() {
+            return Err(Error::CommandsConfigFileNotFound(config.commands_path));
+        }
+        if config.working_dir == PathBuf::new() {
+            config.working_dir = std::env::temp_dir();
+        } else if config.working_dir.is_relative() {
+            let mut working_dir = std::env::temp_dir();
+            working_dir.push(config.working_dir);
+            config.working_dir = working_dir;
+        }
+        config.working_dir = config
+            .working_dir
+            .canonicalize()
+            .map_err(|e| Error::InvalidConfigWorkingDir(config.working_dir.clone(), e))?;
+        if !config.working_dir.is_dir() {
+            return Err(Error::ConfigWorkingDirNotADir(config.working_dir));
+        }
+
+        Ok(config)
     }
 
     /// Try to read and parse the config file
@@ -70,7 +89,10 @@ impl Config {
                 eprintln!("Error, unable to parse the config file \"{FILENAME}\" : {error}");
                 std::process::exit(-1);
             }
-            _ => std::process::exit(-1),
+            error => {
+                eprintln!("Error, invalid setting in the config file \"{FILENAME}\" : {error}");
+                std::process::exit(-1)
+            }
         })
     }
 }

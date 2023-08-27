@@ -123,13 +123,22 @@ pub async fn list_users(
                     error
                 })
                 .ok()?;
-            let mut user_commands = serde_json::from_str::<Vec<CommandName>>(row.get("commands"))
-                .map_err(|error| {
-                    eprintln!("Warning : invalid commands for user {username} : {error}");
-                    error
-                })
-                .ok()?;
-            user_commands.retain(|name| commands.contains_key(name));
+            let user_commands = match role {
+                UserRole::Admin => commands.iter().map(|(name, _)| name.clone()).collect(),
+                UserRole::User => {
+                    let mut user_commands =
+                        serde_json::from_str::<Vec<CommandName>>(row.get("commands"))
+                            .map_err(|error| {
+                                eprintln!(
+                                    "Warning : invalid commands for user {username} : {error}"
+                                );
+                                error
+                            })
+                            .ok()?;
+                    user_commands.retain(|name| commands.contains_key(name));
+                    user_commands
+                }
+            };
             Some(User {
                 username,
                 role,

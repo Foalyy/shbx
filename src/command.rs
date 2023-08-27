@@ -1,4 +1,9 @@
-use crate::{config::Config, user::User, Error};
+use crate::{
+    config::Config,
+    user::{User, UserRole},
+    utils, Error,
+};
+use is_executable::IsExecutable;
 use rocket::tokio::fs;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, ops::Deref, path::PathBuf, time::SystemTime};
@@ -11,7 +16,9 @@ pub type CommandName = String;
 pub struct CommandConfig {
     pub name: CommandName,
     pub label: Option<String>,
-    pub path: PathBuf,
+    pub shell: Option<bool>,
+    pub exec: String,
+    pub working_dir: Option<PathBuf>,
 }
 
 /// A command that ShellBox can execute
@@ -19,24 +26,111 @@ pub struct CommandConfig {
 pub struct Command {
     pub name: String,
     pub label: String,
+    pub shell: bool,
+    pub exec: String,
+    #[serde(skip)]
+    pub cmd: CommandExec,
+    #[serde(skip)]
+    pub working_dir: PathBuf,
+}
+
+/// Path and arguments of an executable command
+#[derive(Clone, Debug)]
+pub struct CommandExec {
     pub path: PathBuf,
+    pub args: Vec<String>,
 }
 
 impl Command {
     /// Try to build a valid [Command] from the given [CommandConfig]
-    pub fn from_config(command_config: &CommandConfig) -> Result<Self, CommandConfigError> {
+    pub fn from_config(
+        command_config: &CommandConfig,
+        config: &Config,
+    ) -> Result<Self, CommandConfigError> {
+        // Check the command name
         let name = command_config.name.clone();
         if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
             return Err(CommandConfigError::InvalidName(name));
         }
+
+        // Get the label if one is specified, or default to the command name
         let label = command_config.label.clone().unwrap_or_else(|| name.clone());
-        let path = command_config.path.canonicalize().map_err(|io_error| {
-            CommandConfigError::InvalidPath(command_config.path.clone(), io_error)
-        })?;
-        if !path.exists() {
-            return Err(CommandConfigError::PathDoesNotExist(path));
+
+        // Check that the specified exec path is valid and refers to an executable file
+        let exec = command_config.exec.clone();
+        let mut exec_path_split = utils::split_line(&command_config.exec);
+        let mut exec_path_cmd = PathBuf::from(
+            exec_path_split
+                .get(0)
+                .ok_or_else(|| CommandConfigError::EmptyPath(name.clone()))?,
+        );
+        exec_path_split.remove(0);
+        let exec_path_args = exec_path_split;
+        if exec_path_cmd.is_absolute() {
+            exec_path_cmd = exec_path_cmd.canonicalize().map_err(|io_error| {
+                CommandConfigError::InvalidPath(name.clone(), exec_path_cmd.clone(), io_error)
+            })?;
+            if !exec_path_cmd.exists() {
+                return Err(CommandConfigError::ExecPathDoesNotExist(
+                    name,
+                    exec_path_cmd,
+                ));
+            }
+            if !exec_path_cmd.is_file() {
+                return Err(CommandConfigError::ExecIsNotAFile(name, exec_path_cmd));
+            }
+            if !exec_path_cmd.is_executable() {
+                return Err(CommandConfigError::ExecPathIsNotExecutable(
+                    name,
+                    exec_path_cmd,
+                ));
+            }
         }
-        Ok(Self { name, label, path })
+
+        // Compute the working dir with the following order or priority :
+        // - the working directory specified for this command, if any
+        // - the directory containing the exec command, if any
+        // - the default working directory specified in the global config
+        //      (which, if not set, defaults to the system's temp directory, such as /tmp on Unix)
+        // and check that it is valid
+        let exec_path_parent = match exec_path_cmd.parent() {
+            Some(p) if p != PathBuf::new() => Some(p.to_path_buf()),
+            _ => None,
+        };
+        let mut working_dir = command_config
+            .working_dir
+            .clone()
+            .or(exec_path_parent)
+            .unwrap_or_else(|| config.working_dir.clone());
+        if working_dir.is_relative() {
+            let mut cmd_working_dir = config.working_dir.clone();
+            cmd_working_dir.push(working_dir);
+            working_dir = cmd_working_dir;
+        }
+        working_dir = working_dir
+            .canonicalize()
+            .map_err(|e| CommandConfigError::InvalidWorkingDir(name.clone(), working_dir, e))?;
+        if !working_dir.exists() {
+            return Err(CommandConfigError::WorkingDirDoesNotExist(
+                name,
+                working_dir,
+            ));
+        }
+        if !working_dir.is_dir() {
+            return Err(CommandConfigError::WorkingDirIsNotADir(name, working_dir));
+        }
+
+        Ok(Self {
+            name,
+            label,
+            shell: command_config.shell.unwrap_or(false),
+            exec,
+            cmd: CommandExec {
+                path: exec_path_cmd,
+                args: exec_path_args,
+            },
+            working_dir,
+        })
     }
 }
 
@@ -45,10 +139,30 @@ impl Command {
 pub enum CommandConfigError {
     #[error("invalid command name \"{0}\", only letters, digits and underscores are allowed")]
     InvalidName(String),
-    #[error("invalid path \"{0}\" : {1}")]
-    InvalidPath(PathBuf, std::io::Error),
-    #[error("path \"{0}\" does not exist")]
-    PathDoesNotExist(PathBuf),
+
+    #[error("empty exec path for command \"{0}\"")]
+    EmptyPath(CommandName),
+
+    #[error("invalid path \"{1}\" for command \"{0}\" : {2}")]
+    InvalidPath(CommandName, PathBuf, std::io::Error),
+
+    #[error("exec path \"{1}\" does not exist for command \"{0}\"")]
+    ExecPathDoesNotExist(CommandName, PathBuf),
+
+    #[error("exec path \"{1}\" is not a file for command \"{0}\"")]
+    ExecIsNotAFile(CommandName, PathBuf),
+
+    #[error("exec path \"{1}\" is not an executable file for command \"{0}\"")]
+    ExecPathIsNotExecutable(CommandName, PathBuf),
+
+    #[error("invalid working dir \"{1}\" for command \"{0}\" : {2}")]
+    InvalidWorkingDir(CommandName, PathBuf, std::io::Error),
+
+    #[error("working dir \"{1}\" does not exist for command \"{0}\"")]
+    WorkingDirDoesNotExist(CommandName, PathBuf),
+
+    #[error("working dir \"{1}\" is not a directory for command \"{0}\"")]
+    WorkingDirIsNotADir(CommandName, PathBuf),
 }
 
 /// A manageable container for a list of [Command]s
@@ -68,8 +182,9 @@ impl Commands {
         match commands.reload(config).await {
             Ok(_) => {
                 println!(
-                    "Read {} commands from {}",
+                    "Read {} command{} from {}",
                     commands.len(),
+                    if commands.len() >= 2 { "s" } else { "" },
                     config.commands_path.display()
                 );
                 commands
@@ -107,7 +222,7 @@ impl Commands {
             // Check and map the parsed CommandsConfig to a HashMap of Command's indexed by the command name
             let mut commands = HashMap::new();
             for command_config in &commands_config.commands {
-                let command = Command::from_config(command_config)?;
+                let command = Command::from_config(command_config, config)?;
                 let previous_entry = commands.insert(command.name.clone(), command);
                 if let Some(previous_entry) = previous_entry {
                     return Err(Error::DuplicateCommandName(previous_entry.name));
@@ -117,10 +232,17 @@ impl Commands {
             // Update self
             self.commands = commands;
             self.modified_time = file_modified_time;
-            println!("Commands config file updated");
             Ok(true)
         } else {
             Ok(false)
+        }
+    }
+
+    pub async fn try_reload(&mut self, config: &Config) {
+        match self.reload(config).await {
+            Ok(true) => println!("Commands config file updated"),
+            Ok(false) => {} // Not changed
+            Err(error) => eprintln!("Error, unable to reload the commands config file : {error}"),
         }
     }
 
@@ -136,13 +258,23 @@ impl Commands {
     pub fn available_to(&self, user: &User) -> Vec<Command> {
         self.iter()
             .filter_map(|(name, command)| {
-                if user.commands.contains(name) {
+                if user.role == UserRole::Admin || user.commands.contains(name) {
                     Some(command.clone())
                 } else {
                     None
                 }
             })
             .collect()
+    }
+
+    /// Get a command based on its name and the user that requests it
+    pub fn get_for_user(&self, command_name: &CommandName, user: &User) -> Option<Command> {
+        if user.role == UserRole::Admin || user.commands.contains(command_name) {
+            if let Some(command) = self.commands.get(command_name) {
+                return Some(command.clone());
+            }
+        }
+        None
     }
 }
 
@@ -159,4 +291,22 @@ impl Deref for Commands {
 pub struct CommandsConfig {
     #[serde(rename = "command")]
     commands: Vec<CommandConfig>,
+}
+
+/// Result of a command that was executed by a user
+#[derive(Serialize, Debug)]
+pub struct CommandResult {
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+impl From<std::process::Output> for CommandResult {
+    fn from(value: std::process::Output) -> Self {
+        Self {
+            exit_code: value.status.code(),
+            stdout: String::from_utf8_lossy(&value.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&value.stderr).to_string(),
+        }
+    }
 }

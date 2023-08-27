@@ -1,5 +1,6 @@
 use crate::{
-    command::{Command, CommandName, Commands},
+    command::{Command, CommandName, CommandResult, Commands},
+    config::Config,
     db::{self, DB},
     user::{AdminUser, NewUser, PlaintextPassword, UpdatedUser, User},
     Error,
@@ -15,6 +16,7 @@ use rocket_db_pools::{sqlx, Connection};
 use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
 use std::{collections::HashMap, fmt::Display};
+use tokio::process;
 
 /// Kinds of responses that the API can return to the caller
 #[derive(Responder, Debug)]
@@ -22,38 +24,64 @@ use std::{collections::HashMap, fmt::Display};
 pub enum Response {
     #[response(status = 400)]
     BadRequest(Json<MessageResponse>),
+
     #[response(status = 401)]
     MissingKeyHeader(Json<MessageResponse>),
+
     #[response(status = 403)]
     AccessForbidden(Json<MessageResponse>),
+
     #[response(status = 404)]
     NotFound(Json<MessageResponse>),
+
     #[response(status = 422)]
     UnprocessableEntity(Json<MessageResponse>),
+
     #[response(status = 500)]
     InternalServerError(Json<MessageResponse>),
+
     #[response(status = 200)]
     LoginSuccessful(Json<LoginSuccessfulResponse>),
+
     #[response(status = 403)]
     LoginFailed(Json<MessageResponse>),
+
     #[response(status = 200)]
     LogoutSuccessful(Json<MessageResponse>),
+
     #[response(status = 200)]
     CommandsList(Json<Vec<Command>>),
+
+    #[response(status = 404)]
+    InvalidCommand(Json<MessageResponse>),
+
+    #[response(status = 500)]
+    CommandFailed(Json<MessageResponse>),
+
+    #[response(status = 200)]
+    CommandResult(Json<CommandResult>),
+
     #[response(status = 200)]
     UsersList(Json<Vec<User>>),
+
     #[response(status = 200)]
     User(Json<User>),
+
     #[response(status = 200)]
     UserCreated(Json<MessageResponse>),
+
     #[response(status = 409)]
     UserAlreadyExists(Json<MessageResponse>),
+
     #[response(status = 200)]
     UserUpdated(Json<MessageResponse>),
+
     #[response(status = 200)]
     UserDeleted(Json<MessageResponse>),
+
     #[response(status = 404)]
     InvalidUsername(Json<MessageResponse>),
+
     #[response(status = 404)]
     InvalidUserCommand(Json<MessageResponse>),
 }
@@ -144,6 +172,24 @@ impl Response {
             result: ResultStatus::Success,
             code: ResultCode::Ok,
             message: "Logout successful".to_string(),
+        }))
+    }
+
+    /// Return a InvalidCommand response
+    pub fn invalid_command() -> Self {
+        Self::InvalidCommand(Json(MessageResponse {
+            result: ResultStatus::Error,
+            code: ResultCode::NotFound,
+            message: "Invalid command".to_string(),
+        }))
+    }
+
+    /// Return a CommandFailed response
+    pub fn command_failed(error: &std::io::Error) -> Self {
+        Self::CommandFailed(Json(MessageResponse {
+            result: ResultStatus::Error,
+            code: ResultCode::InternalServerError,
+            message: format!("Command failed : {error}"),
         }))
     }
 
@@ -329,17 +375,38 @@ impl SessionStore {
     pub async fn delete(&self, key: &ApiKey) -> Option<User> {
         self.sessions.write().await.remove(key)
     }
+
+    /// Update the session(s) of the given user, if any
+    pub async fn update_user(&self, username: &str, updated_user: &UpdatedUser) {
+        let mut sessions = self.sessions.write().await;
+        for (_, user) in sessions.iter_mut() {
+            if user.username == username {
+                user.update_with(updated_user);
+            }
+        }
+    }
 }
 
 /// Check the credentials provided by the user and return a new session key if valid
 #[post("/login", data = "<credentials>")]
 pub async fn route_login(
     credentials: Json<LoginCredentials>,
-    commands: &State<Commands>,
+    commands: &State<RwLock<Commands>>,
+    config: &State<Config>,
     session_store: &State<SessionStore>,
     mut db_conn: Connection<DB>,
 ) -> Response {
-    let db_user = db::get_user(&mut db_conn, commands, &credentials.username).await;
+    // Reload the commands config file if necessary
+    {
+        let mut commands = commands.write().await;
+        commands.try_reload(config).await;
+    }
+
+    // Try to find the user in the database
+    let db_user = {
+        let commands = commands.read().await;
+        db::get_user(&mut db_conn, &commands, &credentials.username).await
+    };
     match db_user {
         Ok(Some(user)) => {
             // A user with the given username was found in the database, check its password
@@ -378,20 +445,75 @@ pub async fn route_logout(user: User, session_store: &State<SessionStore>) -> Re
 
 /// List the commands available to the current user
 #[get("/c")]
-pub async fn route_commands_list(user: User, commands: &State<Commands>) -> Response {
-    let mut available_commands = commands.available_to(&user);
+pub async fn route_commands_list(
+    user: User,
+    commands: &State<RwLock<Commands>>,
+    config: &State<Config>,
+) -> Response {
+    let mut available_commands = {
+        let mut commands = commands.write().await;
+        commands.try_reload(config).await;
+        commands.available_to(&user)
+    };
     available_commands.sort_unstable_by_key(|k| k.name.clone());
     Response::CommandsList(Json(available_commands))
+}
+
+/// Execute a command
+#[post("/c/<command_name>")]
+pub async fn route_exec_command(
+    user: User,
+    commands: &State<RwLock<Commands>>,
+    config: &State<Config>,
+    command_name: CommandName,
+) -> Response {
+    let command = {
+        let mut commands = commands.write().await;
+        commands.try_reload(config).await;
+        commands.get_for_user(&command_name, &user)
+    };
+    if let Some(command) = command {
+        let mut cmd = if command.shell {
+            let mut cmd = process::Command::new("sh");
+            cmd.arg("-c");
+            cmd.arg(command.exec);
+            cmd
+        } else {
+            let mut cmd = process::Command::new(command.cmd.path);
+            cmd.args(command.cmd.args);
+            cmd
+        };
+        cmd.current_dir(command.working_dir);
+        let output = cmd.output().await;
+        match output {
+            Ok(output) => Response::CommandResult(Json(output.into())),
+            Err(error) => Response::command_failed(&error),
+        }
+    } else {
+        Response::invalid_command()
+    }
 }
 
 /// Get the list of users (admin only)
 #[get("/u")]
 pub async fn route_users_list_all(
     _user: AdminUser,
-    commands: &State<Commands>,
+    commands: &State<RwLock<Commands>>,
+    config: &State<Config>,
     mut db_conn: Connection<DB>,
 ) -> Response {
-    match db::list_users(&mut db_conn, commands).await {
+    // Reload the commands config file if necessary
+    {
+        let mut commands = commands.write().await;
+        commands.try_reload(config).await;
+    }
+
+    // Get the list of users from the database
+    let users = {
+        let commands = commands.read().await;
+        db::list_users(&mut db_conn, &commands).await
+    };
+    match users {
         Ok(users) => Response::UsersList(Json(users)),
         Err(error) => {
             println!("Error : unable to get the list of users : {error}");
@@ -405,9 +527,16 @@ pub async fn route_users_list_all(
 pub async fn route_user_create(
     _user: AdminUser,
     new_user: Result<Json<NewUser>, json::Error<'_>>,
-    commands: &State<Commands>,
+    commands: &State<RwLock<Commands>>,
+    config: &State<Config>,
     mut db_conn: Connection<DB>,
 ) -> Response {
+    // Reload the commands config file if necessary
+    {
+        let mut commands = commands.write().await;
+        commands.try_reload(config).await;
+    }
+
     // Check whether the provided data was successfully parsed as a NewUser
     match new_user {
         // We have a NewUser, check that it is valid before trying to insert it into the database
@@ -415,8 +544,11 @@ pub async fn route_user_create(
             let username = new_user.username.clone();
 
             // Check that the provided command names are valid
-            if let Err(error) = commands.check_user_commands(&new_user.commands) {
-                return Response::invalid_user_command(error);
+            {
+                let commands = commands.read().await;
+                if let Err(error) = commands.check_user_commands(&new_user.commands) {
+                    return Response::invalid_user_command(error);
+                }
             }
 
             match db::insert_user(&mut db_conn, new_user.into_inner()).await {
@@ -459,10 +591,22 @@ pub async fn route_user_create(
 pub async fn route_user_get(
     _user: AdminUser,
     username: String,
-    commands: &State<Commands>,
+    commands: &State<RwLock<Commands>>,
+    config: &State<Config>,
     mut db_conn: Connection<DB>,
 ) -> Response {
-    match db::get_user(&mut db_conn, commands, &username).await {
+    // Reload the commands config file if necessary
+    {
+        let mut commands = commands.write().await;
+        commands.try_reload(config).await;
+    }
+
+    // Get the user from the database
+    let user = {
+        let commands = commands.read().await;
+        db::get_user(&mut db_conn, &commands, &username).await
+    };
+    match user {
         Ok(Some(user)) => Response::User(Json(user)),
         Ok(None) => Response::not_found(),
         Err(error) => {
@@ -478,23 +622,45 @@ pub async fn route_user_update(
     _user: AdminUser,
     username: String,
     updated_user: Result<Json<UpdatedUser>, json::Error<'_>>,
-    commands: &State<Commands>,
+    commands: &State<RwLock<Commands>>,
+    config: &State<Config>,
+    session_store: &State<SessionStore>,
     mut db_conn: Connection<DB>,
 ) -> Response {
+    // Reload the commands config file if necessary
+    {
+        let mut commands = commands.write().await;
+        commands.try_reload(config).await;
+    }
+
     // Check whether the provided data was successfully parsed as a UpdatedUser
     match updated_user {
         // We have a UpdatedUser, check that it is valid before trying to send it to the database
         Ok(updated_user) => {
             // Check that the provided command names (if any) are valid
-            if let Some(updated_commands) = &updated_user.commands {
-                if let Err(error) = commands.check_user_commands(updated_commands) {
-                    return Response::invalid_user_command(error);
+            {
+                let commands = commands.read().await;
+                if let Some(updated_commands) = &updated_user.commands {
+                    if let Err(error) = commands.check_user_commands(updated_commands) {
+                        return Response::invalid_user_command(error);
+                    }
                 }
             }
 
-            match db::update_user(&mut db_conn, username.clone(), updated_user.into_inner()).await {
+            let update_result = db::update_user(
+                &mut db_conn,
+                username.clone(),
+                updated_user.clone().into_inner(),
+            )
+            .await;
+            match update_result {
                 // The user was successfully updated in the database
-                Ok(_) => Response::user_updated(username),
+                Ok(_) => {
+                    // Update the user in the session store
+                    session_store.update_user(&username, &updated_user).await;
+
+                    Response::user_updated(username)
+                }
 
                 // No user with the given username was found
                 Err(Error::InvalidUser(username)) => Response::invalid_username(username),
@@ -522,8 +688,17 @@ pub async fn route_user_update(
 pub async fn route_user_delete(
     _user: AdminUser,
     username: String,
+    commands: &State<RwLock<Commands>>,
+    config: &State<Config>,
     mut db_conn: Connection<DB>,
 ) -> Response {
+    // Reload the commands config file if necessary
+    {
+        let mut commands = commands.write().await;
+        commands.try_reload(config).await;
+    }
+
+    // Delete the user from the database
     match db::delete_user(&mut db_conn, username.clone()).await {
         // The user was successfully deleted from the database
         Ok(_) => Response::user_deleted(username),
