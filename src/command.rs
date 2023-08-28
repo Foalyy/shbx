@@ -6,7 +6,8 @@ use crate::{
 use is_executable::IsExecutable;
 use rocket::tokio::fs;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, ops::Deref, path::PathBuf, time::SystemTime};
+use std::{collections::HashMap, ops::Deref, path::PathBuf, process::Stdio, time::SystemTime};
+use tokio::process;
 
 pub type CommandName = String;
 
@@ -137,6 +138,26 @@ impl Command {
             },
             working_dir,
         })
+    }
+
+    /// Consume this [Command] and convert it into a [process::Command] ready to be executed.
+    pub fn into_process(self) -> process::Command {
+        let mut cmd = if self.shell {
+            let mut cmd = process::Command::new("sh");
+            cmd.arg("-c");
+            cmd.arg(self.exec);
+            cmd
+        } else {
+            let mut cmd = process::Command::new(self.cmd.path);
+            cmd.args(self.cmd.args);
+            cmd
+        };
+        cmd.current_dir(self.working_dir);
+        cmd.stdin(Stdio::piped());
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+        cmd.kill_on_drop(true);
+        cmd
     }
 }
 
@@ -302,17 +323,27 @@ pub struct CommandsConfig {
 /// Result of a command that was executed by a user
 #[derive(Serialize, Debug)]
 pub struct CommandResult {
-    pub exit_code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
+    pub exit_code: Option<i32>,
 }
 
 impl From<std::process::Output> for CommandResult {
     fn from(value: std::process::Output) -> Self {
         Self {
-            exit_code: value.status.code(),
             stdout: String::from_utf8_lossy(&value.stdout).to_string(),
             stderr: String::from_utf8_lossy(&value.stderr).to_string(),
+            exit_code: value.status.code(),
         }
     }
+}
+
+/// Item in a result stream of a command that was executed by a user
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamCommandResult {
+    Stdout(String),
+    Stderr(String),
+    ExitCode(Option<i32>),
+    Error(String),
 }

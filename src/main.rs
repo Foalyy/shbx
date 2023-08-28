@@ -58,6 +58,8 @@ async fn rocket() -> _ {
                 api::route_logout,
                 api::route_commands_list,
                 api::route_exec_command,
+                api::route_exec_command_stream_events,
+                api::route_exec_command_stream_text,
                 api::route_users_list_all,
                 api::route_user_create,
                 api::route_user_get,

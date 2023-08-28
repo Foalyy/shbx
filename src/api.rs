@@ -1,5 +1,5 @@
 use crate::{
-    command::{Command, CommandName, CommandResult, Commands},
+    command::{StreamCommandResult, Command, CommandName, CommandResult, Commands},
     config::Config,
     db::{self, DB},
     user::{AdminUser, NewUser, PlaintextPassword, UpdatedUser, User},
@@ -8,15 +8,18 @@ use crate::{
 use base64::Engine;
 use rand::RngCore;
 use rocket::{
-    serde::json::{self, Json},
+    response::stream::{Event, EventStream, TextStream},
+    serde::json::{self, json, Json},
     tokio::sync::RwLock,
     State,
 };
 use rocket_db_pools::{sqlx, Connection};
 use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
-use std::{collections::HashMap, fmt::Display, process::Stdio, time::Duration};
-use tokio::{process, time::timeout};
+use std::{collections::HashMap, fmt::Display, time::Duration};
+use tokio::time;
+use tokio_process_stream::{Item, ProcessLineStream};
+use tokio_stream::StreamExt;
 
 /// Kinds of responses that the API can return to the caller
 #[derive(Responder, Debug)]
@@ -180,29 +183,44 @@ impl Response {
 
     /// Return a InvalidCommand response
     pub fn invalid_command() -> Self {
-        Self::InvalidCommand(Json(MessageResponse {
+        Self::InvalidCommand(Json(Self::invalid_command_response()))
+    }
+
+    /// Return the inner [MessageResponse] for an InvalidCommand response
+    pub fn invalid_command_response() -> MessageResponse {
+        MessageResponse {
             result: ResultStatus::Error,
             code: ResultCode::NotFound,
             message: "Invalid command".to_string(),
-        }))
+        }
     }
 
     /// Return a CommandFailed response
     pub fn command_failed(error: &std::io::Error) -> Self {
-        Self::CommandFailed(Json(MessageResponse {
+        Self::CommandFailed(Json(Self::command_failed_response(error)))
+    }
+
+    /// Return the inner [MessageResponse] for a CommandFailed response
+    pub fn command_failed_response(error: &std::io::Error) -> MessageResponse {
+        MessageResponse {
             result: ResultStatus::Error,
             code: ResultCode::InternalServerError,
             message: format!("Command failed : {error}"),
-        }))
+        }
     }
 
     /// Return a CommandTimeout response
     pub fn command_timeout(timeout: Duration) -> Self {
-        Self::CommandTimeout(Json(MessageResponse {
+        Self::CommandTimeout(Json(Self::command_timeout_response(timeout)))
+    }
+
+    /// Return the inner [MessageResponse] for a CommandTimeout response
+    pub fn command_timeout_response(timeout: Duration) -> MessageResponse {
+        MessageResponse {
             result: ResultStatus::Error,
             code: ResultCode::RequestTimeout,
             message: format!("Command timeout after {}ms", timeout.as_millis()),
-        }))
+        }
     }
 
     /// Return a UserCreated response
@@ -472,7 +490,7 @@ pub async fn route_commands_list(
     Response::CommandsList(Json(available_commands))
 }
 
-/// Execute a command
+/// Execute a command and return its output when finished
 #[post("/commands/<command_name>")]
 pub async fn route_exec_command(
     user: User,
@@ -480,36 +498,187 @@ pub async fn route_exec_command(
     config: &State<Config>,
     command_name: CommandName,
 ) -> Response {
+    // Try to find a valid command available to this user based on the given name
     let command = {
         let mut commands = commands.write().await;
         commands.try_reload(config).await;
         commands.get_for_user(&command_name, &user)
     };
+
     if let Some(command) = command {
-        let mut cmd = if command.shell {
-            let mut cmd = process::Command::new("sh");
-            cmd.arg("-c");
-            cmd.arg(command.exec);
-            cmd
-        } else {
-            let mut cmd = process::Command::new(command.cmd.path);
-            cmd.args(command.cmd.args);
-            cmd
-        };
-        cmd.current_dir(command.working_dir);
-        cmd.stdin(Stdio::piped());
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
-        cmd.kill_on_drop(true);
+        // Maximum duration that the process can take to execute
         let timeout_duration = Duration::from_millis(command.timeout_millis);
-        let timeout = timeout(timeout_duration, cmd.output()).await;
+
+        // Convert the Command to an executable process
+        let mut process = command.into_process();
+
+        // Wait for the command output, bounded by a timeout of the configured duration.
+        // Because [tokio::time::timeout] drops the [Future] when it expires, and the process was
+        // configured with [kill_on_drop] enabled, the child process is killed in case of a timeout.
+        let timeout = time::timeout(timeout_duration, process.output()).await;
+
         match timeout {
+            // Command executed successfully, return its output to the user
             Ok(Ok(output)) => Response::CommandResult(Json(output.into())),
+
+            // Command failed, return the error
             Ok(Err(error)) => Response::command_failed(&error),
+
+            // Timeout expired, the child process was killed
             Err(_) => Response::command_timeout(timeout_duration),
         }
     } else {
         Response::invalid_command()
+    }
+}
+
+/// Execute a command and return the result as stream of type `text/event-stream`.
+/// Note that the output of the child process is passed back through a pipe,
+/// which means it might be buffered. For instance, Python scripts apply a
+/// line-based buffering strategy when stdout is connected to a terminal, but
+/// a more agressive buffering strategy when connected to a pipe, which means
+/// the output might not be sent in realtime. In Python's case, either manually
+/// flush the stdout buffer with `sys.stdout.flush()`, or use `python -u` to
+/// force unbuffered output. In a shebang, this may for instance translate as
+/// `#!/bin/env -S python -u`.
+/// Also, make sure the stream is not buffered by a frontend reverse proxy.
+#[post("/commands/<command_name>/stream/events")]
+pub async fn route_exec_command_stream_events(
+    user: User,
+    commands: &State<RwLock<Commands>>,
+    config: &State<Config>,
+    command_name: CommandName,
+) -> EventStream![] {
+    // Try to find a valid command available to this user based on the given name
+    let command = {
+        let mut commands = commands.write().await;
+        commands.try_reload(config).await;
+        commands.get_for_user(&command_name, &user)
+    };
+
+    EventStream! {
+        if let Some(command) = command {
+            // Maximum duration that the process can take to execute
+            let timeout_duration = Duration::from_millis(command.timeout_millis);
+
+            // Convert the Command to an executable process
+            let mut process = command.into_process();
+
+            // Create a simple sleep task that will be used as a timeout
+            let timeout = time::sleep(timeout_duration);
+            tokio::pin!(timeout);
+
+            // Try to spawn the child process
+            match process.spawn() {
+                Ok(child) => {
+                    // Get the output of the child process as a Stream
+                    let mut cmd_stream = ProcessLineStream::from(child);
+
+                    loop {
+                        tokio::select! {
+                            item = cmd_stream.next() => {
+                                // The child sent an event :
+                                match item {
+                                    // - some output to stdout or stderr
+                                    Some(Item::Stdout(data)) => yield Event::json(&StreamCommandResult::Stdout(data)),
+                                    Some(Item::Stderr(data)) => yield Event::json(&StreamCommandResult::Stderr(data)),
+
+                                    // - an exit status
+                                    Some(Item::Done(Ok(status))) => yield Event::json(&StreamCommandResult::ExitCode(status.code())),
+                                    Some(Item::Done(Err(error))) => yield Event::json(&StreamCommandResult::Error(format!("{error}"))),
+
+                                    // - (no more events available because the process finished)
+                                    None => break,
+                                }
+                            }
+                            () = &mut timeout => {
+                                // Timeout expired
+                                yield Event::json(&Response::command_timeout_response(timeout_duration));
+                                break;
+                            }
+                        }
+                    }
+                    // When the loop returns, [child] is dropped, which ensures it is killed because [kill_on_drop] is set when
+                    // the process is created
+                }
+
+                // Command failed, return the error
+                Err(error) => yield Event::json(&Response::command_failed_response(&error)),
+            }
+        } else {
+            yield Event::json(&Response::invalid_command_response());
+        }
+    }
+}
+
+/// Execute a command and return the result as stream of type `text/plain`.
+/// See the warning regarding buffering in [route_exec_command_async_event].
+#[post("/commands/<command_name>/stream/text")]
+pub async fn route_exec_command_stream_text(
+    user: User,
+    commands: &State<RwLock<Commands>>,
+    config: &State<Config>,
+    command_name: CommandName,
+) -> TextStream![String] {
+    // Try to find a valid command available to this user based on the given name
+    let command = {
+        let mut commands = commands.write().await;
+        commands.try_reload(config).await;
+        commands.get_for_user(&command_name, &user)
+    };
+
+    TextStream! {
+        if let Some(command) = command {
+            // Maximum duration that the process can take to execute
+            let timeout_duration = Duration::from_millis(command.timeout_millis);
+
+            // Convert the Command to an executable process
+            let mut process = command.into_process();
+
+            // Create a simple sleep task that will be used as a timeout
+            let timeout = time::sleep(timeout_duration);
+            tokio::pin!(timeout);
+
+            // Try to spawn the child process
+            match process.spawn() {
+                Ok(child) => {
+                    // Get the output of the child process as a Stream
+                    let mut cmd_stream = ProcessLineStream::from(child);
+
+                    loop {
+                        tokio::select! {
+                            item = cmd_stream.next() => {
+                                // The child sent an event :
+                                match item {
+                                    // - some output to stdout or stderr
+                                    Some(Item::Stdout(text)) => yield format!("{text}\n"),
+                                    Some(Item::Stderr(text)) => yield format!("{text}\n"),
+
+                                    // - an exit status
+                                    Some(Item::Done(Ok(status))) => yield format!("{}\n", json!(&StreamCommandResult::ExitCode(status.code()))),
+                                    Some(Item::Done(Err(error))) => yield format!("{}\n", json!(&StreamCommandResult::Error(format!("{error}")))),
+
+                                    // - (no more events available because the process finished)
+                                    None => break,
+                                }
+                            }
+                            () = &mut timeout => {
+                                // Timeout expired
+                                yield format!("{}\n", json!(&Response::command_timeout_response(timeout_duration)));
+                                break;
+                            }
+                        }
+                    }
+                    // When the loop returns, [child] is dropped, which ensures it is killed because [kill_on_drop] is set when
+                    // the process is created
+                }
+
+                // Command failed, return the error
+                Err(error) => yield format!("{}\n", json!(&Response::command_failed_response(&error))),
+            }
+        } else {
+            yield format!("{}\n", json!(Response::invalid_command_response()));
+        }
     }
 }
 
