@@ -19,6 +19,8 @@ pub struct CommandConfig {
     pub label: Option<String>,
     pub shell: Option<bool>,
     pub timeout_millis: Option<u64>,
+    pub user: Option<String>,
+    pub group: Option<String>,
     pub exec: String,
     pub working_dir: Option<PathBuf>,
 }
@@ -31,6 +33,10 @@ pub struct Command {
     pub shell: bool,
     #[serde(skip)]
     pub timeout_millis: u64,
+    #[serde(skip)]
+    pub user: Option<unix_users::User>,
+    #[serde(skip)]
+    pub group: Option<unix_users::Group>,
     pub exec: String,
     #[serde(skip)]
     pub cmd: CommandExec,
@@ -59,6 +65,24 @@ impl Command {
 
         // Get the label if one is specified, or default to the command name
         let label = command_config.label.clone().unwrap_or_else(|| name.clone());
+
+        // Check the user and group, if any
+        let user = command_config
+            .user
+            .as_ref()
+            .map(|user_name| {
+                unix_users::get_user_by_name(&user_name)
+                    .ok_or_else(|| CommandConfigError::InvalidUser(user_name.clone()))
+            })
+            .transpose()?;
+        let group = command_config
+            .group
+            .as_ref()
+            .map(|group_name| {
+                unix_users::get_group_by_name(&group_name)
+                    .ok_or_else(|| CommandConfigError::InvalidGroup(group_name.clone()))
+            })
+            .transpose()?;
 
         // Check that the specified exec path is valid and refers to an executable file
         let exec = command_config.exec.clone();
@@ -131,6 +155,8 @@ impl Command {
             timeout_millis: command_config
                 .timeout_millis
                 .unwrap_or(config.timeout_millis),
+            user,
+            group,
             exec,
             cmd: CommandExec {
                 path: exec_path_cmd,
@@ -156,6 +182,12 @@ impl Command {
         cmd.stdin(Stdio::piped());
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
+        if let Some(user) = self.user {
+            cmd.uid(user.uid());
+        }
+        if let Some(group) = self.group {
+            cmd.gid(group.gid());
+        }
         cmd.kill_on_drop(true);
         cmd
     }
@@ -166,6 +198,12 @@ impl Command {
 pub enum CommandConfigError {
     #[error("invalid command name \"{0}\", only letters, digits and underscores are allowed")]
     InvalidName(String),
+
+    #[error("invalid user \"{0}\"")]
+    InvalidUser(String),
+
+    #[error("invalid group \"{0}\"")]
+    InvalidGroup(String),
 
     #[error("empty exec path for command \"{0}\"")]
     EmptyPath(CommandName),
