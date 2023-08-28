@@ -78,8 +78,11 @@ impl<'r> FromRequest<'r> for User {
             }
         };
 
+        // Clean up old sessions from the session store
+        session_store.cleanup().await;
+
         // Try to find a user with the given session key in the session store
-        if let Some(user) = session_store.get(&api_key).await {
+        if let Some(user) = session_store.get_and_touch(&api_key).await {
             // User found : return it
             return request::Outcome::Success(user);
         }

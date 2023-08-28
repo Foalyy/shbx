@@ -16,10 +16,17 @@ use rocket::{
 use rocket_db_pools::{sqlx, Connection};
 use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
-use std::{collections::HashMap, fmt::Display, time::Duration};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    time::{Duration, Instant},
+};
 use tokio::time;
 use tokio_process_stream::{Item, ProcessLineStream};
 use tokio_stream::StreamExt;
+
+/// Sessions expire and are deleted after this delay of inactivity (in seconds)
+const SESSION_TIMEOUT: u64 = 3600; // s
 
 /// Kinds of responses that the API can return to the caller
 #[derive(Responder, Debug)]
@@ -365,11 +372,38 @@ impl Display for ApiKey {
     }
 }
 
-/// A [SessionStore] is used to store the list of [User]s currently logged in referenced
-/// by their [ApiKey]
+/// A [User] currently logged in with some information about its current session
+#[derive(Debug, Clone)]
+struct Session {
+    pub user: User,
+    last_activity: Instant,
+}
+
+impl Session {
+    /// Create a new session for the given user
+    pub fn from(user: User) -> Self {
+        Self {
+            user,
+            last_activity: Instant::now(),
+        }
+    }
+
+    /// Update the last_activity field of this session
+    pub fn touch(&mut self) {
+        self.last_activity = Instant::now()
+    }
+
+    /// Check whether this session is expired according to [SESSION_TIMEOUT]
+    pub fn is_expired(&self) -> bool {
+        self.last_activity.elapsed().as_secs() >= SESSION_TIMEOUT
+    }
+}
+
+/// A [SessionStore] is used to store the list of [Session]s (currently logged-in [User]s)
+/// referenced by their [ApiKey]
 #[derive(Debug)]
 pub struct SessionStore {
-    sessions: RwLock<HashMap<ApiKey, User>>,
+    sessions: RwLock<HashMap<ApiKey, Session>>,
 }
 
 impl SessionStore {
@@ -393,27 +427,51 @@ impl SessionStore {
         let mut sessions_guard = self.sessions.write().await;
         //sessions_guard.retain(|_, u| u.username != user.username);
         user.session_key = Some(key.clone());
-        sessions_guard.insert(key, user);
+        sessions_guard.insert(key, Session::from(user));
     }
 
     /// Get a currently logged-in [User] based on the given [ApiKey]
+    #[allow(dead_code)]
     pub async fn get(&self, key: &ApiKey) -> Option<User> {
-        self.sessions.read().await.get(key).cloned()
+        self.sessions.read().await.get(key).map(|l| l.user.clone())
+    }
+
+    /// Get a currently logged-in [User] based on the given [ApiKey],
+    /// and if found, update its last_activity marker
+    pub async fn get_and_touch(&self, key: &ApiKey) -> Option<User> {
+        self.sessions.write().await.get_mut(key).map(|l| {
+            l.touch();
+            l.user.clone()
+        })
     }
 
     /// Remove the session associated with the given [ApiKey] from the store
     /// (to logout the user)
     pub async fn delete(&self, key: &ApiKey) -> Option<User> {
-        self.sessions.write().await.remove(key)
+        self.sessions.write().await.remove(key).map(|l| l.user)
     }
 
     /// Update the session(s) of the given user, if any
     pub async fn update_user(&self, username: &str, updated_user: &UpdatedUser) {
         let mut sessions = self.sessions.write().await;
-        for (_, user) in sessions.iter_mut() {
-            if user.username == username {
-                user.update_with(updated_user);
+        for (_, session) in sessions.iter_mut() {
+            if session.user.username == username {
+                session.user.update_with(updated_user);
             }
+        }
+    }
+
+    /// Look for old sessions inside this store that need to be removed
+    pub async fn cleanup(&self) {
+        let mut sessions_to_delete = Vec::new();
+        let mut sessions = self.sessions.write().await;
+        for (api_key, session) in sessions.iter() {
+            if session.is_expired() {
+                sessions_to_delete.push(api_key.clone());
+            }
+        }
+        for key in sessions_to_delete {
+            sessions.remove(&key);
         }
     }
 }
