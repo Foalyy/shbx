@@ -168,26 +168,50 @@ impl Command {
 
     /// Consume this [Command] and convert it into a [process::Command] ready to be executed.
     pub fn into_process(self) -> process::Command {
-        let mut cmd = if self.shell {
-            let mut cmd = process::Command::new("sh");
-            cmd.arg("-c");
-            cmd.arg(self.exec);
-            cmd
+        let use_sudo = self.user.is_some() || self.group.is_some();
+        let mut cmd = if !use_sudo {
+            // Without sudo
+            if !self.shell {
+                // Run the command directly
+                let mut cmd = process::Command::new(self.cmd.path);
+                cmd.args(self.cmd.args);
+                cmd
+            } else {
+                // Run the command in a shell
+                let mut cmd = process::Command::new("sh");
+                cmd.arg("-c");
+                cmd.arg(self.exec);
+                cmd
+            }
         } else {
-            let mut cmd = process::Command::new(self.cmd.path);
-            cmd.args(self.cmd.args);
+            // Run the command through sudo to change the user and/or group
+            let mut cmd = process::Command::new("sudo");
+            cmd.arg("-n"); // Non-interactive mode : return an error instead of asking a password
+            if let Some(user) = self.user {
+                cmd.arg("-u");
+                cmd.arg(user.name());
+            }
+            if let Some(group) = self.group {
+                cmd.arg("-g");
+                cmd.arg(group.name());
+            }
+
+            if !self.shell {
+                // Without shell
+                cmd.arg(self.cmd.path);
+                cmd.args(self.cmd.args);
+            } else {
+                // With a shell
+                cmd.arg("sh");
+                cmd.arg("-c");
+                cmd.arg(self.exec);
+            }
             cmd
         };
         cmd.current_dir(self.working_dir);
         cmd.stdin(Stdio::piped());
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
-        if let Some(user) = self.user {
-            cmd.uid(user.uid());
-        }
-        if let Some(group) = self.group {
-            cmd.gid(group.gid());
-        }
         cmd.kill_on_drop(true);
         cmd
     }
@@ -256,7 +280,7 @@ impl Commands {
             }
             Err(error) => {
                 eprintln!(
-                    "Error : unable to read the commands config file \"{}\" : {error}",
+                    "Error, unable to reload the commands config file \"{}\" : {error}",
                     config.commands_path.display()
                 );
                 std::process::exit(-1);
