@@ -324,6 +324,8 @@ pub enum ResultCode {
 pub struct LoginCredentials {
     username: String,
     password: String,
+    #[serde(default)]
+    permanent: bool,
 }
 
 /// Specialized message sent after a successful login, containing the session key
@@ -415,19 +417,28 @@ impl SessionStore {
     }
 
     /// Create a new session in this [SessionStore] for the given [User]
-    /// and return the new [ApiKey]
-    pub async fn new_session(&self, user: User) -> ApiKey {
-        let key = ApiKey::new();
+    /// and return either the user's [ApiKey] if [permanent] is set, or
+    /// a new temporary [ApiKey] otherwise
+    pub async fn new_session(&self, user: User, permanent: bool) -> ApiKey {
+        let key = if permanent {
+            user.api_key.clone()
+        } else {
+            ApiKey::new()
+        };
         self.new_session_with_key(user, key.clone()).await;
         key
     }
 
     /// Create a new session in this [SessionStore] for the given [User] and [ApiKey]
+    /// if it doesn't already exist, or otherwise simply update its last_activity marker
     pub async fn new_session_with_key(&self, mut user: User, key: ApiKey) {
-        let mut sessions_guard = self.sessions.write().await;
-        //sessions_guard.retain(|_, u| u.username != user.username);
-        user.session_key = Some(key.clone());
-        sessions_guard.insert(key, Session::from(user));
+        let mut sessions = self.sessions.write().await;
+        if let Some(session) = sessions.get_mut(&key) {
+            session.touch();
+        } else {
+            user.session_key = Some(key.clone());
+            sessions.insert(key, Session::from(user));
+        }
     }
 
     /// Get a currently logged-in [User] based on the given [ApiKey]
@@ -501,7 +512,7 @@ pub async fn route_login(
             // A user with the given username was found in the database, check its password
             if let Some(hashed_password) = &user.hashed_password {
                 if PlaintextPassword::from(credentials.password.as_str()).verify(hashed_password) {
-                    let key = session_store.new_session(user).await;
+                    let key = session_store.new_session(user, credentials.permanent).await;
                     Response::login_successful(key)
                 } else {
                     Response::login_failed()
