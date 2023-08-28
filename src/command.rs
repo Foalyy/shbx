@@ -167,7 +167,7 @@ impl Command {
     }
 
     /// Consume this [Command] and convert it into a [process::Command] ready to be executed.
-    pub fn into_process(self) -> process::Command {
+    pub fn into_process(self, config: &Config) -> process::Command {
         let use_sudo = self.user.is_some() || self.group.is_some();
         let mut cmd = if !use_sudo {
             // Without sudo
@@ -178,8 +178,8 @@ impl Command {
                 cmd
             } else {
                 // Run the command in a shell
-                let mut cmd = process::Command::new("sh");
-                cmd.arg("-c");
+                let mut cmd = process::Command::new(config.shell_parsed.0.clone());
+                cmd.args(config.shell_parsed.1.clone());
                 cmd.arg(self.exec);
                 cmd
             }
@@ -202,8 +202,8 @@ impl Command {
                 cmd.args(self.cmd.args);
             } else {
                 // With a shell
-                cmd.arg("sh");
-                cmd.arg("-c");
+                cmd.arg(config.shell_parsed.0.clone());
+                cmd.args(config.shell_parsed.1.clone());
                 cmd.arg(self.exec);
             }
             cmd

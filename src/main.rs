@@ -123,6 +123,9 @@ pub enum Error {
     #[error("working dir \"{0}\" is not a valid directory, please check WORKING_DIR in the main config file")]
     ConfigWorkingDirNotADir(PathBuf),
 
+    #[error("invalid shell \"{0}\"")]
+    ConfigInvalidShell(String),
+
     #[error("{0}")]
     CommandConfigError(#[from] CommandConfigError),
 

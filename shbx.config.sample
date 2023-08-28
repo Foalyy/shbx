@@ -20,6 +20,10 @@ COMMANDS_PATH = "commands.config"
 # Default : (the system's temporary directory, such as /tmp on Unix)
 #WORKING_DIR = ""
 
+# Shell to execute the commands in, for commands that specify SHELL=true.
+# Default : "sh -c"
+#SHELL = "sh -c"
+
 # Default timeout after which a command is killed, in milliseconds.
 # Default : 10000ms
 #TIMEOUT_MILLIS = 10000

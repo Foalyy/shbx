@@ -1,5 +1,5 @@
 use crate::{
-    command::{StreamCommandResult, Command, CommandName, CommandResult, Commands},
+    command::{Command, CommandName, CommandResult, Commands, StreamCommandResult},
     config::Config,
     db::{self, DB},
     user::{AdminUser, NewUser, PlaintextPassword, UpdatedUser, User},
@@ -510,7 +510,7 @@ pub async fn route_exec_command(
         let timeout_duration = Duration::from_millis(command.timeout_millis);
 
         // Convert the Command to an executable process
-        let mut process = command.into_process();
+        let mut process = command.into_process(config);
 
         // Wait for the command output, bounded by a timeout of the configured duration.
         // Because [tokio::time::timeout] drops the [Future] when it expires, and the process was
@@ -543,12 +543,12 @@ pub async fn route_exec_command(
 /// `#!/bin/env -S python -u`.
 /// Also, make sure the stream is not buffered by a frontend reverse proxy.
 #[post("/commands/<command_name>/stream/events")]
-pub async fn route_exec_command_stream_events(
+pub async fn route_exec_command_stream_events<'a>(
     user: User,
     commands: &State<RwLock<Commands>>,
-    config: &State<Config>,
+    config: &'a State<Config>,
     command_name: CommandName,
-) -> EventStream![] {
+) -> EventStream![Event + 'a] {
     // Try to find a valid command available to this user based on the given name
     let command = {
         let mut commands = commands.write().await;
@@ -562,7 +562,7 @@ pub async fn route_exec_command_stream_events(
             let timeout_duration = Duration::from_millis(command.timeout_millis);
 
             // Convert the Command to an executable process
-            let mut process = command.into_process();
+            let mut process = command.into_process(config);
 
             // Create a simple sleep task that will be used as a timeout
             let timeout = time::sleep(timeout_duration);
@@ -614,12 +614,12 @@ pub async fn route_exec_command_stream_events(
 /// Execute a command and return the result as stream of type `text/plain`.
 /// See the warning regarding buffering in [route_exec_command_async_event].
 #[post("/commands/<command_name>/stream/text")]
-pub async fn route_exec_command_stream_text(
+pub async fn route_exec_command_stream_text<'a>(
     user: User,
     commands: &State<RwLock<Commands>>,
-    config: &State<Config>,
+    config: &'a State<Config>,
     command_name: CommandName,
-) -> TextStream![String] {
+) -> TextStream![String + 'a] {
     // Try to find a valid command available to this user based on the given name
     let command = {
         let mut commands = commands.write().await;
@@ -633,7 +633,7 @@ pub async fn route_exec_command_stream_text(
             let timeout_duration = Duration::from_millis(command.timeout_millis);
 
             // Convert the Command to an executable process
-            let mut process = command.into_process();
+            let mut process = command.into_process(config);
 
             // Create a simple sleep task that will be used as a timeout
             let timeout = time::sleep(timeout_duration);

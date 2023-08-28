@@ -40,10 +40,19 @@ pub struct Config {
     #[serde(default = "PathBuf::new")]
     pub working_dir: PathBuf,
 
+    /// Shell to execute the commands in, for commands that specify SHELL=true.
+    /// Default : "sh -c"
+    #[serde(default = "config_default_shell")]
+    pub shell: String,
+
     /// Default timeout after which a command is killed, in milliseconds.
     /// Default : 10000ms
     #[serde(default = "config_default_timeout_millis")]
     pub timeout_millis: u64,
+
+    /// Internal field
+    #[serde(skip)]
+    pub shell_parsed: (String, Vec<String>),
 }
 
 impl Config {
@@ -55,10 +64,12 @@ impl Config {
             fs::read_to_string(&path).map_err(|e| Error::FileError(e, path.clone()))?;
         let mut config: Config = toml::from_str(file_content.as_str())?;
 
-        // Check this config
+        // Check commands_path
         if !config.commands_path.is_file() {
             return Err(Error::CommandsConfigFileNotFound(config.commands_path));
         }
+
+        // Check working_dir
         if config.working_dir == PathBuf::new() {
             config.working_dir = std::env::temp_dir();
         } else if config.working_dir.is_relative() {
@@ -72,6 +83,17 @@ impl Config {
             .map_err(|e| Error::InvalidConfigWorkingDir(config.working_dir.clone(), e))?;
         if !config.working_dir.is_dir() {
             return Err(Error::ConfigWorkingDirNotADir(config.working_dir));
+        }
+
+        // Parse shell
+        let mut shell_split = config.shell.split(' ');
+        if let Some(program) = shell_split.next() {
+            config.shell_parsed = (
+                program.to_string(),
+                shell_split.map(|s| s.to_string()).collect(),
+            );
+        } else {
+            return Err(Error::ConfigInvalidShell(config.shell));
         }
 
         Ok(config)
@@ -118,6 +140,10 @@ fn config_default_database_path() -> PathBuf {
 
 fn config_default_commands_path() -> PathBuf {
     PathBuf::from("commands.config")
+}
+
+fn config_default_shell() -> String {
+    "sh -c".to_string()
 }
 
 fn config_default_timeout_millis() -> u64 {
