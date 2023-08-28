@@ -289,6 +289,26 @@ pub async fn update_user(
     }
 }
 
+/// Replace user's API key with a new one and return it
+pub async fn revoke_user_api_key(
+    db_conn: &mut PoolConnection<Sqlite>,
+    username: String,
+) -> Result<ApiKey, Error> {
+    let api_key = ApiKey::new();
+    let mut query_builder = QueryBuilder::new("UPDATE user SET api_key=");
+    query_builder.push_bind(api_key.to_string());
+    query_builder.push(" WHERE username=");
+    query_builder.push_bind(username.clone());
+    query_builder.push(";");
+    let query = query_builder.build();
+    let result = query.execute(&mut *db_conn).await?;
+    if result.rows_affected() > 0 {
+        Ok(api_key)
+    } else {
+        Err(Error::InvalidUser(username))
+    }
+}
+
 /// Delete a user from the database
 pub async fn delete_user(
     db_conn: &mut PoolConnection<Sqlite>,

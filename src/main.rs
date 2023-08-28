@@ -64,6 +64,7 @@ async fn rocket() -> _ {
                 api::route_user_create,
                 api::route_user_get,
                 api::route_user_update,
+                api::route_user_revoke_api_key,
                 api::route_user_delete,
             ],
         )

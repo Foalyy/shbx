@@ -90,6 +90,9 @@ pub enum Response {
     UserUpdated(Json<MessageResponse>),
 
     #[response(status = 200)]
+    UserApiKeyRevoked(Json<MessageResponse>),
+
+    #[response(status = 200)]
     UserDeleted(Json<MessageResponse>),
 
     #[response(status = 404)]
@@ -254,6 +257,15 @@ impl Response {
             result: ResultStatus::Success,
             code: ResultCode::Ok,
             message: format!("User '{username}' updated successfully"),
+        }))
+    }
+
+    /// Return a UserApiKeyRevoked response
+    pub fn user_api_key_revoked(username: String) -> Self {
+        Self::UserApiKeyRevoked(Json(MessageResponse {
+            result: ResultStatus::Success,
+            code: ResultCode::Ok,
+            message: format!("API key of user '{username}' revoked and regenerated successfully"),
         }))
     }
 
@@ -462,6 +474,12 @@ impl SessionStore {
         self.sessions.write().await.remove(key).map(|l| l.user)
     }
 
+    /// Remove all the sessions of a [User] based on its username
+    pub async fn delete_sessions_of(&self, username: &String) {
+        let mut sessions = self.sessions.write().await;
+        sessions.retain(|_, session| &session.user.username != username);
+    }
+
     /// Update the session(s) of the given user, if any
     pub async fn update_user(&self, username: &str, updated_user: &UpdatedUser) {
         let mut sessions = self.sessions.write().await;
@@ -474,16 +492,8 @@ impl SessionStore {
 
     /// Look for old sessions inside this store that need to be removed
     pub async fn cleanup(&self) {
-        let mut sessions_to_delete = Vec::new();
         let mut sessions = self.sessions.write().await;
-        for (api_key, session) in sessions.iter() {
-            if session.is_expired() {
-                sessions_to_delete.push(api_key.clone());
-            }
-        }
-        for key in sessions_to_delete {
-            sessions.remove(&key);
-        }
+        sessions.retain(|_, session| !session.is_expired());
     }
 }
 
@@ -937,6 +947,33 @@ pub async fn route_user_update(
 
         // Unable to read input data, or any other error
         _ => Response::bad_request(),
+    }
+}
+
+/// Revoke the API key of a user and generate a new one (admin only)
+#[post("/users/<username>/revoke_api_key")]
+pub async fn route_user_revoke_api_key(
+    _user: AdminUser,
+    username: String,
+    session_store: &State<SessionStore>,
+    mut db_conn: Connection<DB>,
+) -> Response {
+    // Remove all current sessions of this user
+    session_store.delete_sessions_of(&username).await;
+
+    let revoke_result = db::revoke_user_api_key(&mut db_conn, username.clone()).await;
+    match revoke_result {
+        // The user was successfully updated in the database
+        Ok(_) => Response::user_api_key_revoked(username),
+
+        // No user with the given username was found
+        Err(Error::InvalidUser(username)) => Response::invalid_username(username),
+
+        // Another error
+        Err(error) => {
+            println!("Error : unable to revoke a user' API key : {error}");
+            Response::internal_server_error()
+        }
     }
 }
 
