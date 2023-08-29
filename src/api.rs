@@ -1,5 +1,5 @@
 use crate::{
-    command::{Command, CommandName, CommandResult, Commands, StreamCommandResult},
+    command::{Command, CommandName, CommandResult, Commands, StreamCommandResult, Tasks},
     config::Config,
     db::{self, DB},
     user::{AdminUser, NewUser, PlaintextPassword, UpdatedUser, User},
@@ -67,6 +67,9 @@ pub enum Response {
 
     #[response(status = 500)]
     CommandFailed(Json<MessageResponse>),
+
+    #[response(status = 409)]
+    CommandAlreadyRunning(Json<MessageResponse>),
 
     #[response(status = 408)]
     CommandTimeout(Json<MessageResponse>),
@@ -216,6 +219,20 @@ impl Response {
             result: ResultStatus::Error,
             code: ResultCode::InternalServerError,
             message: format!("Command failed : {error}"),
+        }
+    }
+
+    /// Return a CommandAlreadyRunning response
+    pub fn command_already_running() -> Self {
+        Self::CommandAlreadyRunning(Json(Self::command_already_running_response()))
+    }
+
+    /// Return the inner [MessageResponse] for a CommandAlreadyRunning response
+    pub fn command_already_running_response() -> MessageResponse {
+        MessageResponse {
+            result: ResultStatus::Error,
+            code: ResultCode::Conflict,
+            message: "Command already running".to_string(),
         }
     }
 
@@ -575,6 +592,7 @@ pub async fn route_exec_command(
     user: User,
     commands: &State<RwLock<Commands>>,
     config: &State<Config>,
+    tasks: &State<RwLock<Tasks>>,
     command_name: CommandName,
 ) -> Response {
     // Try to find a valid command available to this user based on the given name
@@ -585,6 +603,20 @@ pub async fn route_exec_command(
     };
 
     if let Some(command) = command {
+        // If the MUTEX parameter is set for this command, wheck whether it is already running
+        if command.mutex {
+            let tasks = tasks.read().await;
+            if tasks.is_running(&command.name) {
+                return Response::command_already_running();
+            }
+        }
+
+        // Create a [Task] representing this running command
+        let task = {
+            let mut tasks = tasks.write().await;
+            tasks.create(command_name)
+        };
+
         // Maximum duration that the process can take to execute
         let timeout_duration = Duration::from_millis(command.timeout_millis);
 
@@ -595,6 +627,12 @@ pub async fn route_exec_command(
         // Because [tokio::time::timeout] drops the [Future] when it expires, and the process was
         // configured with [kill_on_drop] enabled, the child process is killed in case of a timeout.
         let timeout = time::timeout(timeout_duration, process.output()).await;
+
+        // The task is finished, delete it
+        {
+            let mut tasks = tasks.write().await;
+            tasks.remove(&task.id);
+        }
 
         match timeout {
             // Command executed successfully, return its output to the user
@@ -626,6 +664,7 @@ pub async fn route_exec_command_stream_events<'a>(
     user: User,
     commands: &State<RwLock<Commands>>,
     config: &'a State<Config>,
+    tasks: &'a State<RwLock<Tasks>>,
     command_name: CommandName,
 ) -> EventStream![Event + 'a] {
     // Try to find a valid command available to this user based on the given name
@@ -637,6 +676,22 @@ pub async fn route_exec_command_stream_events<'a>(
 
     EventStream! {
         if let Some(command) = command {
+            // If the MUTEX parameter is set for this command, wheck whether it is already running
+            if command.mutex {
+                let tasks = tasks.read().await;
+                if tasks.is_running(&command.name) {
+                    yield Event::json(&Response::command_already_running_response());
+                    return;
+                }
+            }
+
+            // Create a [Task] representing this running command and send its id to the client
+            let task = {
+                let mut tasks = tasks.write().await;
+                tasks.create(command_name)
+            };
+            yield Event::json(&StreamCommandResult::TaskId(task.id.to_string()));
+
             // Maximum duration that the process can take to execute
             let timeout_duration = Duration::from_millis(command.timeout_millis);
 
@@ -677,12 +732,19 @@ pub async fn route_exec_command_stream_events<'a>(
                             }
                         }
                     }
+
                     // When the loop returns, [child] is dropped, which ensures it is killed because [kill_on_drop] is set when
                     // the process is created
                 }
 
                 // Command failed, return the error
                 Err(error) => yield Event::json(&Response::command_failed_response(&error)),
+            }
+
+            // The task is finished, delete it
+            {
+                let mut tasks = tasks.write().await;
+                tasks.remove(&task.id);
             }
         } else {
             yield Event::json(&Response::invalid_command_response());
@@ -697,6 +759,7 @@ pub async fn route_exec_command_stream_text<'a>(
     user: User,
     commands: &State<RwLock<Commands>>,
     config: &'a State<Config>,
+    tasks: &'a State<RwLock<Tasks>>,
     command_name: CommandName,
 ) -> TextStream![String + 'a] {
     // Try to find a valid command available to this user based on the given name
@@ -708,6 +771,21 @@ pub async fn route_exec_command_stream_text<'a>(
 
     TextStream! {
         if let Some(command) = command {
+            // If the MUTEX parameter is set for this command, wheck whether it is already running
+            if command.mutex {
+                let tasks = tasks.read().await;
+                if tasks.is_running(&command.name) {
+                    yield format!("{}\n", json!(&Response::command_already_running_response()));
+                    return;
+                }
+            }
+
+            // Create a [Task] representing this running command
+            let task = {
+                let mut tasks = tasks.write().await;
+                tasks.create(command_name)
+            };
+
             // Maximum duration that the process can take to execute
             let timeout_duration = Duration::from_millis(command.timeout_millis);
 
@@ -754,6 +832,12 @@ pub async fn route_exec_command_stream_text<'a>(
 
                 // Command failed, return the error
                 Err(error) => yield format!("{}\n", json!(&Response::command_failed_response(&error))),
+            }
+
+            // The task is finished, delete it
+            {
+                let mut tasks = tasks.write().await;
+                tasks.remove(&task.id);
             }
         } else {
             yield format!("{}\n", json!(Response::invalid_command_response()));

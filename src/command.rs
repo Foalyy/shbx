@@ -6,8 +6,11 @@ use crate::{
 use is_executable::IsExecutable;
 use rocket::tokio::fs;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, ops::Deref, path::PathBuf, process::Stdio, time::SystemTime};
+use std::{
+    collections::HashMap, fmt::Display, ops::Deref, path::PathBuf, process::Stdio, time::SystemTime,
+};
 use tokio::process;
+use uuid::Uuid;
 
 pub type CommandName = String;
 
@@ -23,6 +26,8 @@ pub struct CommandConfig {
     pub group: Option<String>,
     pub exec: String,
     pub working_dir: Option<PathBuf>,
+    #[serde(default)]
+    pub mutex: bool,
 }
 
 /// A command that ShellBox can execute
@@ -42,6 +47,8 @@ pub struct Command {
     pub cmd: CommandExec,
     #[serde(skip)]
     pub working_dir: PathBuf,
+    #[serde(skip)]
+    pub mutex: bool,
 }
 
 /// Path and arguments of an executable command
@@ -163,6 +170,7 @@ impl Command {
                 args: exec_path_args,
             },
             working_dir,
+            mutex: command_config.mutex,
         })
     }
 
@@ -404,8 +412,103 @@ impl From<std::process::Output> for CommandResult {
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum StreamCommandResult {
+    TaskId(String),
     Stdout(String),
     Stderr(String),
     ExitCode(Option<i32>),
     Error(String),
+}
+
+/// A [Command] currently running
+#[derive(Debug, Clone)]
+pub struct Task {
+    pub name: CommandName,
+    pub id: TaskId,
+}
+
+impl Task {
+    /// Create a new [Task] with the given name
+    pub fn new(tasks: &Tasks, name: CommandName) -> Self {
+        Self {
+            name,
+            id: TaskId::new(tasks),
+        }
+    }
+}
+
+/// A unique identifier for a running [Task]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+pub struct TaskId(Uuid);
+
+impl Display for TaskId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl TaskId {
+    /// Generate a new unique task identifier
+    pub fn new(tasks: &Tasks) -> Self {
+        loop {
+            let id = Self(Uuid::new_v4());
+            if !tasks.contains_key(&id) {
+                return id;
+            }
+        }
+    }
+}
+
+/// All the currently running [Task]s
+#[derive(Debug)]
+pub struct Tasks {
+    tasks: HashMap<TaskId, Task>,
+    tasks_ids_by_name: HashMap<CommandName, Vec<TaskId>>,
+}
+
+impl Tasks {
+    /// Create a new [Tasks] container
+    pub fn new() -> Self {
+        Self {
+            tasks: HashMap::new(),
+            tasks_ids_by_name: HashMap::new(),
+        }
+    }
+
+    /// Create a new task inside this container and return it
+    pub fn create(&mut self, name: CommandName) -> Task {
+        let task = Task::new(self, name.clone());
+        self.tasks.insert(task.id.clone(), task.clone());
+        self.tasks_ids_by_name
+            .entry(name)
+            .or_insert_with(Vec::new)
+            .push(task.id.clone());
+        task
+    }
+
+    /// Check whether a task with the given name is running
+    pub fn is_running(&self, name: &CommandName) -> bool {
+        self.tasks_ids_by_name.get(name).is_some()
+    }
+
+    /// Remove the given task from the container
+    pub fn remove(&mut self, id: &TaskId) -> Option<Task> {
+        let deleted_task = self.tasks.remove(id);
+        if let Some(deleted_task) = &deleted_task {
+            if let Some(ids) = self.tasks_ids_by_name.get_mut(&deleted_task.name) {
+                ids.retain(|id| id != &deleted_task.id);
+                if ids.is_empty() {
+                    self.tasks_ids_by_name.remove(&deleted_task.name);
+                }
+            }
+        }
+        deleted_task
+    }
+}
+
+impl Deref for Tasks {
+    type Target = HashMap<TaskId, Task>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.tasks
+    }
 }

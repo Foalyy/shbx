@@ -21,6 +21,7 @@ serde_repr = "0.1.16"
 is_executable = "1.0.1"
 tokio-process-stream = "0.4.0"
 unix_users = { package = "users", version = "0.11.0" }
+uuid = { version = "1.4.1", features = ["v4"] }
 
 [dependencies.rocket_dyn_templates]
 version = "0.1.0-rc.3"

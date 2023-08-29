@@ -9,7 +9,7 @@ mod user;
 mod utils;
 
 use api::SessionStore;
-use command::{CommandConfigError, Commands};
+use command::{CommandConfigError, Commands, Tasks};
 use config::Config;
 use db::DB;
 use rocket::fairing::AdHoc;
@@ -86,6 +86,7 @@ async fn rocket() -> _ {
         ))
         .manage(RwLock::new(Commands::read_or_exit(&config).await))
         .manage(SessionStore::new())
+        .manage(RwLock::new(Tasks::new()))
         .manage(config)
         .attach(AdHoc::on_liftoff("Startup message", move |_| {
             Box::pin(async move {
