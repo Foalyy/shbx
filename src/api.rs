@@ -1,5 +1,7 @@
 use crate::{
-    command::{Command, CommandName, CommandResult, Commands, StreamCommandResult, Tasks},
+    command::{
+        Command, CommandName, CommandResult, Commands, StreamCommandResult, Task, TaskId, Tasks,
+    },
     config::Config,
     db::{self, DB},
     user::{AdminUser, NewUser, PlaintextPassword, UpdatedUser, User},
@@ -19,6 +21,7 @@ use serde_repr::Serialize_repr;
 use std::{
     collections::HashMap,
     fmt::Display,
+    io,
     time::{Duration, Instant},
 };
 use tokio::time;
@@ -68,6 +71,9 @@ pub enum Response {
     #[response(status = 500)]
     CommandFailed(Json<MessageResponse>),
 
+    #[response(status = 500)]
+    CommandFailedWithOutput(Json<MessageResponseWithOutput>),
+
     #[response(status = 409)]
     CommandAlreadyRunning(Json<MessageResponse>),
 
@@ -76,6 +82,24 @@ pub enum Response {
 
     #[response(status = 200)]
     CommandResult(Json<CommandResult>),
+
+    #[response(status = 408)]
+    CommandTimeoutWithOutput(Json<MessageResponseWithOutput>),
+
+    #[response(status = 410)]
+    CommandAbortedWithOutput(Json<MessageResponseWithOutput>),
+
+    #[response(status = 200)]
+    Tasks(Json<Vec<Task>>),
+
+    #[response(status = 404)]
+    InvalidTaskId(Json<MessageResponse>),
+
+    #[response(status = 200)]
+    TaskKilled(Json<MessageResponse>),
+
+    #[response(status = 500)]
+    UnableToKillTask(Json<MessageResponse>),
 
     #[response(status = 200)]
     UsersList(Json<Vec<User>>),
@@ -222,6 +246,21 @@ impl Response {
         }
     }
 
+    /// Return a CommandFailedWithOutput response
+    pub fn command_failed_with_output(
+        stdout: String,
+        stderr: String,
+        error: &std::io::Error,
+    ) -> Self {
+        Self::CommandFailedWithOutput(Json(MessageResponseWithOutput {
+            result: ResultStatus::Error,
+            code: ResultCode::InternalServerError,
+            message: format!("Command failed : {error}"),
+            stdout,
+            stderr,
+        }))
+    }
+
     /// Return a CommandAlreadyRunning response
     pub fn command_already_running() -> Self {
         Self::CommandAlreadyRunning(Json(Self::command_already_running_response()))
@@ -248,6 +287,55 @@ impl Response {
             code: ResultCode::RequestTimeout,
             message: format!("Command timeout after {}ms", timeout.as_millis()),
         }
+    }
+
+    /// Return a CommandTimeoutWithOutput response
+    pub fn command_timeout_with_output(stdout: String, stderr: String, timeout: Duration) -> Self {
+        Self::CommandTimeoutWithOutput(Json(MessageResponseWithOutput {
+            result: ResultStatus::Error,
+            code: ResultCode::RequestTimeout,
+            message: format!("Command timeout after {}ms", timeout.as_millis()),
+            stdout,
+            stderr,
+        }))
+    }
+
+    /// Return a CommandAbortedWithOutput response
+    pub fn command_aborted_with_output(stdout: String, stderr: String) -> Self {
+        Self::CommandAbortedWithOutput(Json(MessageResponseWithOutput {
+            result: ResultStatus::Error,
+            code: ResultCode::Gone,
+            message: "Command was killed or aborted unexpectedly without an exit code".to_string(),
+            stdout,
+            stderr,
+        }))
+    }
+
+    /// Return a InvalidTaskId response
+    pub fn invalid_task_id(repr: String) -> Self {
+        Self::InvalidTaskId(Json(MessageResponse {
+            result: ResultStatus::Error,
+            code: ResultCode::NotFound,
+            message: format!("Invalid task id : \"{repr}\""),
+        }))
+    }
+
+    /// Return a TaskKilled response
+    pub fn task_killed(task_id: &TaskId) -> Self {
+        Self::TaskKilled(Json(MessageResponse {
+            result: ResultStatus::Success,
+            code: ResultCode::Ok,
+            message: format!("Kill signal sent to task \"{task_id}\""),
+        }))
+    }
+
+    /// Return a UnableToKillTask response
+    pub fn unable_to_kill_task(task_id: &TaskId) -> Self {
+        Self::UnableToKillTask(Json(MessageResponse {
+            result: ResultStatus::Error,
+            code: ResultCode::InternalServerError,
+            message: format!("Unable to send kill signal to task \"{task_id}\""),
+        }))
     }
 
     /// Return a UserCreated response
@@ -321,6 +409,16 @@ pub struct MessageResponse {
     result: ResultStatus,
     code: ResultCode,
     message: String,
+}
+
+/// Message response with associated output
+#[derive(Serialize, Debug)]
+pub struct MessageResponseWithOutput {
+    result: ResultStatus,
+    code: ResultCode,
+    message: String,
+    stdout: String,
+    stderr: String,
 }
 
 /// Specifies whether this request was successful or not
@@ -612,9 +710,9 @@ pub async fn route_exec_command(
         }
 
         // Create a [Task] representing this running command
-        let task = {
+        let (task, mut task_kill_signal_recv) = {
             let mut tasks = tasks.write().await;
-            tasks.create(command_name)
+            tasks.create(command_name, user.username)
         };
 
         // Maximum duration that the process can take to execute
@@ -623,10 +721,77 @@ pub async fn route_exec_command(
         // Convert the Command to an executable process
         let mut process = command.into_process(config);
 
-        // Wait for the command output, bounded by a timeout of the configured duration.
-        // Because [tokio::time::timeout] drops the [Future] when it expires, and the process was
-        // configured with [kill_on_drop] enabled, the child process is killed in case of a timeout.
-        let timeout = time::timeout(timeout_duration, process.output()).await;
+        // Create a simple sleep task that will be used as a timeout
+        let timeout = time::sleep(timeout_duration);
+        tokio::pin!(timeout);
+
+        // Try to spawn the child process
+        let response = match process.spawn() {
+            Ok(child) => {
+                // Get the output of the child process as a Stream
+                let mut cmd_stream = ProcessLineStream::from(child);
+
+                let mut stdout = String::new();
+                let mut stderr = String::new();
+                let mut exit_code: Option<i32> = None;
+                let mut exit_status_error: Option<io::Error> = None;
+                loop {
+                    tokio::select! {
+                        item = cmd_stream.next() => {
+                            // The child sent an event :
+                            match item {
+                                // - some output to stdout or stderr
+                                Some(Item::Stdout(data)) => {
+                                    stdout.push_str(&data);
+                                    stdout.push('\n');
+                                }
+                                Some(Item::Stderr(data)) => {
+                                    stderr.push_str(&data);
+                                    stderr.push('\n');
+                                }
+
+                                // - an exit status
+                                Some(Item::Done(Ok(status))) => exit_code = status.code(),
+                                Some(Item::Done(Err(error))) => exit_status_error = Some(error),
+
+                                // - (no more events available because the process finished)
+                                None => {
+                                    if let Some(error) = exit_status_error {
+                                        // The process output stream returned a Done(Err(_))
+                                        break Response::command_failed_with_output(stdout, stderr, &error);
+
+                                    } else if let Some(exit_code) = exit_code {
+                                        // The process finished and returned an exit code
+                                        break Response::CommandResult(Json(CommandResult { stdout, stderr, exit_code: Some(exit_code) }));
+
+                                    } else {
+                                        // The process finished but didn't return an exit code, which usually means it
+                                        // was killed or otherwise aborted by a signal
+                                        break Response::command_aborted_with_output(stdout, stderr);
+                                    }
+                                }
+                            }
+                        }
+                        () = &mut timeout => {
+                            // Timeout expired
+                            break Response::command_timeout_with_output( stdout, stderr, timeout_duration);
+                        }
+                        _ = &mut task_kill_signal_recv => {
+                            // Received a message on the kill channel : try to kill the child process
+                            if let Some(child) = cmd_stream.child_mut() {
+                                child.kill().await.ok();
+                            }
+                        }
+                    }
+                }
+
+                // When this branch returns, [child] is dropped, which ensures the process is killed because
+                // [kill_on_drop] is set when the process is created
+            }
+
+            // Command failed, return the error
+            Err(error) => Response::command_failed(&error),
+        };
 
         // The task is finished, delete it
         {
@@ -634,16 +799,7 @@ pub async fn route_exec_command(
             tasks.remove(&task.id);
         }
 
-        match timeout {
-            // Command executed successfully, return its output to the user
-            Ok(Ok(output)) => Response::CommandResult(Json(output.into())),
-
-            // Command failed, return the error
-            Ok(Err(error)) => Response::command_failed(&error),
-
-            // Timeout expired, the child process was killed
-            Err(_) => Response::command_timeout(timeout_duration),
-        }
+        response
     } else {
         Response::invalid_command()
     }
@@ -686,9 +842,9 @@ pub async fn route_exec_command_stream_events<'a>(
             }
 
             // Create a [Task] representing this running command and send its id to the client
-            let task = {
+            let (task, mut task_kill_signal_recv) = {
                 let mut tasks = tasks.write().await;
-                tasks.create(command_name)
+                tasks.create(command_name, user.username)
             };
             yield Event::json(&StreamCommandResult::TaskId(task.id.to_string()));
 
@@ -730,11 +886,21 @@ pub async fn route_exec_command_stream_events<'a>(
                                 yield Event::json(&Response::command_timeout_response(timeout_duration));
                                 break;
                             }
+                            _ = &mut task_kill_signal_recv => {
+                                // Received a message on the kill channel : try to kill the child process
+                                if let Some(child) = cmd_stream.child_mut() {
+                                    match child.kill().await {
+                                        Ok(()) => yield Event::json(&StreamCommandResult::TaskKilled),
+                                        Err(error) => yield Event::json(&StreamCommandResult::UnableToKillTask(error.to_string())),
+                                    }
+                                }
+                                break;
+                            }
                         }
                     }
 
-                    // When the loop returns, [child] is dropped, which ensures it is killed because [kill_on_drop] is set when
-                    // the process is created
+                    // When this branch returns, [child] is dropped, which ensures the process is killed because
+                    // [kill_on_drop] is set when the process is created
                 }
 
                 // Command failed, return the error
@@ -781,9 +947,9 @@ pub async fn route_exec_command_stream_text<'a>(
             }
 
             // Create a [Task] representing this running command
-            let task = {
+            let (task, mut task_kill_signal_recv) = {
                 let mut tasks = tasks.write().await;
-                tasks.create(command_name)
+                tasks.create(command_name, user.username)
             };
 
             // Maximum duration that the process can take to execute
@@ -824,10 +990,21 @@ pub async fn route_exec_command_stream_text<'a>(
                                 yield format!("{}\n", json!(&Response::command_timeout_response(timeout_duration)));
                                 break;
                             }
+                            _ = &mut task_kill_signal_recv => {
+                                // Received a message on the kill channel : try to kill the child process
+                                if let Some(child) = cmd_stream.child_mut() {
+                                    match child.kill().await {
+                                        Ok(()) => yield format!("{}\n", json!(&StreamCommandResult::TaskKilled)),
+                                        Err(error) => yield format!("{}\n", json!(&StreamCommandResult::UnableToKillTask(error.to_string()))),
+                                    }
+                                }
+                                break;
+                            }
                         }
                     }
-                    // When the loop returns, [child] is dropped, which ensures it is killed because [kill_on_drop] is set when
-                    // the process is created
+
+                    // When this branch returns, [child] is dropped, which ensures the process is killed because
+                    // [kill_on_drop] is set when the process is created
                 }
 
                 // Command failed, return the error
@@ -842,6 +1019,32 @@ pub async fn route_exec_command_stream_text<'a>(
         } else {
             yield format!("{}\n", json!(Response::invalid_command_response()));
         }
+    }
+}
+
+/// Get the list of currently-running task
+#[get("/tasks")]
+pub async fn route_tasks_list(user: User, tasks: &State<RwLock<Tasks>>) -> Response {
+    let tasks = tasks.read().await;
+    Response::Tasks(Json(tasks.visible_to(&user).cloned().collect()))
+}
+
+/// Kill a currently-running task
+#[post("/tasks/<task_id>/kill")]
+pub async fn route_task_kill(
+    user: User,
+    tasks: &State<RwLock<Tasks>>,
+    task_id: String,
+) -> Response {
+    if let Some(task_id) = TaskId::from(&task_id) {
+        let mut tasks = tasks.write().await;
+        match tasks.kill(&task_id, &user) {
+            Some(true) => Response::task_killed(&task_id),
+            Some(false) => Response::unable_to_kill_task(&task_id),
+            None => Response::invalid_task_id(task_id.to_string()),
+        }
+    } else {
+        Response::invalid_task_id(task_id)
     }
 }
 

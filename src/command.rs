@@ -4,7 +4,7 @@ use crate::{
     utils, Error,
 };
 use is_executable::IsExecutable;
-use rocket::tokio::fs;
+use rocket::{futures::channel::oneshot, tokio::fs};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap, fmt::Display, ops::Deref, path::PathBuf, process::Stdio, time::SystemTime,
@@ -416,22 +416,45 @@ pub enum StreamCommandResult {
     Stdout(String),
     Stderr(String),
     ExitCode(Option<i32>),
+    TaskKilled,
+    UnableToKillTask(String),
     Error(String),
 }
 
 /// A [Command] currently running
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Task {
     pub name: CommandName,
     pub id: TaskId,
+    pub launched_by: String,
 }
 
 impl Task {
     /// Create a new [Task] with the given name
-    pub fn new(tasks: &Tasks, name: CommandName) -> Self {
+    pub fn new(tasks: &Tasks, name: CommandName, launched_by: String) -> Self {
         Self {
             name,
             id: TaskId::new(tasks),
+            launched_by,
+        }
+    }
+
+    /// Check whether this task is visible to the given [User]. A normal user
+    /// can only see its own tasks, while an admin can see every task.
+    pub fn is_visible_to(&self, user: &User) -> bool {
+        match user.role {
+            UserRole::Admin => true,
+            UserRole::User => self.launched_by == user.username,
+        }
+    }
+
+    /// Return this task itself if it is visible to the given [User].
+    /// See [is_visible_to] for more information.
+    pub fn if_visible_to(&self, user: &User) -> Option<&Self> {
+        if self.is_visible_to(user) {
+            Some(self)
+        } else {
+            None
         }
     }
 }
@@ -439,12 +462,6 @@ impl Task {
 /// A unique identifier for a running [Task]
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct TaskId(Uuid);
-
-impl Display for TaskId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
 
 impl TaskId {
     /// Generate a new unique task identifier
@@ -456,6 +473,26 @@ impl TaskId {
             }
         }
     }
+
+    /// Try to create a [TaskId] from the given string
+    pub fn from(repr: &str) -> Option<Self> {
+        Uuid::parse_str(repr).ok().map(Self)
+    }
+}
+
+impl Display for TaskId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl Serialize for TaskId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
 }
 
 /// All the currently running [Task]s
@@ -463,6 +500,7 @@ impl TaskId {
 pub struct Tasks {
     tasks: HashMap<TaskId, Task>,
     tasks_ids_by_name: HashMap<CommandName, Vec<TaskId>>,
+    kill_signal_senders: HashMap<TaskId, oneshot::Sender<()>>,
 }
 
 impl Tasks {
@@ -471,18 +509,33 @@ impl Tasks {
         Self {
             tasks: HashMap::new(),
             tasks_ids_by_name: HashMap::new(),
+            kill_signal_senders: HashMap::new(),
         }
     }
 
+    /// Return an iterator over the list of tasks visible to this user
+    pub fn visible_to<'a>(&'a self, user: &'a User) -> impl Iterator<Item = &Task> + 'a {
+        self.tasks
+            .iter()
+            .filter_map(|(_, task)| task.if_visible_to(user))
+    }
+
     /// Create a new task inside this container and return it
-    pub fn create(&mut self, name: CommandName) -> Task {
-        let task = Task::new(self, name.clone());
+    pub fn create(
+        &mut self,
+        name: CommandName,
+        launched_by: String,
+    ) -> (Task, oneshot::Receiver<()>) {
+        let task = Task::new(self, name.clone(), launched_by);
         self.tasks.insert(task.id.clone(), task.clone());
         self.tasks_ids_by_name
             .entry(name)
             .or_insert_with(Vec::new)
             .push(task.id.clone());
-        task
+        let (kill_signal_send, kill_signal_recv) = oneshot::channel::<()>();
+        self.kill_signal_senders
+            .insert(task.id.clone(), kill_signal_send);
+        (task, kill_signal_recv)
     }
 
     /// Check whether a task with the given name is running
@@ -501,7 +554,22 @@ impl Tasks {
                 }
             }
         }
+        self.kill_signal_senders.remove(id);
         deleted_task
+    }
+
+    /// Send the kill signal to the given task as the given [User]
+    pub fn kill(&mut self, id: &TaskId, user: &User) -> Option<bool> {
+        if self
+            .tasks
+            .get(id)
+            .is_some_and(|task| task.is_visible_to(user))
+        {
+            if let Some(sender) = self.kill_signal_senders.remove(id) {
+                return Some(sender.send(()).is_ok());
+            }
+        }
+        None
     }
 }
 
