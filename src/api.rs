@@ -13,7 +13,7 @@ use rocket::{
     response::stream::{Event, EventStream, TextStream},
     serde::json::{self, json, Json},
     tokio::sync::RwLock,
-    State,
+    Shutdown, State,
 };
 use rocket_db_pools::{sqlx, Connection};
 use serde::{Deserialize, Serialize};
@@ -88,6 +88,9 @@ pub enum Response {
 
     #[response(status = 410)]
     CommandAbortedWithOutput(Json<MessageResponseWithOutput>),
+
+    #[response(status = 503)]
+    ServerShutdownWithOutput(Json<MessageResponseWithOutput>),
 
     #[response(status = 200)]
     Tasks(Json<Vec<Task>>),
@@ -311,6 +314,17 @@ impl Response {
         }))
     }
 
+    /// Return a ServerShutdownWithOutput response
+    pub fn server_shutdown_with_output(stdout: String, stderr: String) -> Self {
+        Self::ServerShutdownWithOutput(Json(MessageResponseWithOutput {
+            result: ResultStatus::Error,
+            code: ResultCode::ServiceUnavailable,
+            message: "Server is shutting down".to_string(),
+            stdout,
+            stderr,
+        }))
+    }
+
     /// Return a InvalidTaskId response
     pub fn invalid_task_id(repr: String) -> Self {
         Self::InvalidTaskId(Json(MessageResponse {
@@ -444,6 +458,7 @@ pub enum ResultCode {
     Gone = 410,
     UnprocessableEntity = 422,
     InternalServerError = 500,
+    ServiceUnavailable = 503,
 }
 
 /// Credentials sent by a user
@@ -692,6 +707,7 @@ pub async fn route_exec_command(
     config: &State<Config>,
     tasks: &State<RwLock<Tasks>>,
     command_name: CommandName,
+    mut shutdown: Shutdown,
 ) -> Response {
     // Try to find a valid command available to this user based on the given name
     let command = {
@@ -701,8 +717,8 @@ pub async fn route_exec_command(
     };
 
     if let Some(command) = command {
-        // If the MUTEX parameter is set for this command, wheck whether it is already running
-        if command.mutex {
+        // If the NO_CONCURRENT_EXEC parameter is set for this command, wheck whether it is already running
+        if command.no_concurrent_exec {
             let tasks = tasks.read().await;
             if tasks.is_running(&command.name) {
                 return Response::command_already_running();
@@ -774,13 +790,16 @@ pub async fn route_exec_command(
                         }
                         () = &mut timeout => {
                             // Timeout expired
-                            break Response::command_timeout_with_output( stdout, stderr, timeout_duration);
+                            break Response::command_timeout_with_output(stdout, stderr, timeout_duration);
                         }
                         _ = &mut task_kill_signal_recv => {
                             // Received a message on the kill channel : try to kill the child process
                             if let Some(child) = cmd_stream.child_mut() {
                                 child.kill().await.ok();
                             }
+                        }
+                        _ = &mut shutdown => {
+                            break Response::server_shutdown_with_output(stdout, stderr);
                         }
                     }
                 }
@@ -822,6 +841,7 @@ pub async fn route_exec_command_stream_events<'a>(
     config: &'a State<Config>,
     tasks: &'a State<RwLock<Tasks>>,
     command_name: CommandName,
+    mut shutdown: Shutdown,
 ) -> EventStream![Event + 'a] {
     // Try to find a valid command available to this user based on the given name
     let command = {
@@ -832,8 +852,8 @@ pub async fn route_exec_command_stream_events<'a>(
 
     EventStream! {
         if let Some(command) = command {
-            // If the MUTEX parameter is set for this command, wheck whether it is already running
-            if command.mutex {
+            // If the NO_CONCURRENT_EXEC parameter is set for this command, wheck whether it is already running
+            if command.no_concurrent_exec {
                 let tasks = tasks.read().await;
                 if tasks.is_running(&command.name) {
                     yield Event::json(&Response::command_already_running_response());
@@ -896,6 +916,10 @@ pub async fn route_exec_command_stream_events<'a>(
                                 }
                                 break;
                             }
+                            _ = &mut shutdown => {
+                                yield Event::json(&StreamCommandResult::ServerShutdown);
+                                break;
+                            }
                         }
                     }
 
@@ -927,6 +951,7 @@ pub async fn route_exec_command_stream_text<'a>(
     config: &'a State<Config>,
     tasks: &'a State<RwLock<Tasks>>,
     command_name: CommandName,
+    mut shutdown: Shutdown,
 ) -> TextStream![String + 'a] {
     // Try to find a valid command available to this user based on the given name
     let command = {
@@ -937,8 +962,8 @@ pub async fn route_exec_command_stream_text<'a>(
 
     TextStream! {
         if let Some(command) = command {
-            // If the MUTEX parameter is set for this command, wheck whether it is already running
-            if command.mutex {
+            // If the NO_CONCURRENT_EXEC parameter is set for this command, wheck whether it is already running
+            if command.no_concurrent_exec {
                 let tasks = tasks.read().await;
                 if tasks.is_running(&command.name) {
                     yield format!("{}\n", json!(&Response::command_already_running_response()));
@@ -1000,6 +1025,10 @@ pub async fn route_exec_command_stream_text<'a>(
                                 }
                                 break;
                             }
+                            _ = &mut shutdown => {
+                                yield format!("{}\n", json!(&StreamCommandResult::ServerShutdown));
+                                break;
+                            }
                         }
                     }
 
@@ -1025,7 +1054,7 @@ pub async fn route_exec_command_stream_text<'a>(
 /// Get the list of currently-running task
 #[get("/tasks")]
 pub async fn route_tasks_list(user: User, tasks: &State<RwLock<Tasks>>) -> Response {
-    let tasks = tasks.read().await;
+    let mut tasks = tasks.write().await;
     Response::Tasks(Json(tasks.visible_to(&user).cloned().collect()))
 }
 

@@ -27,7 +27,7 @@ pub struct CommandConfig {
     pub exec: String,
     pub working_dir: Option<PathBuf>,
     #[serde(default)]
-    pub mutex: bool,
+    pub no_concurrent_exec: bool,
 }
 
 /// A command that ShellBox can execute
@@ -48,7 +48,7 @@ pub struct Command {
     #[serde(skip)]
     pub working_dir: PathBuf,
     #[serde(skip)]
-    pub mutex: bool,
+    pub no_concurrent_exec: bool,
 }
 
 /// Path and arguments of an executable command
@@ -170,7 +170,7 @@ impl Command {
                 args: exec_path_args,
             },
             working_dir,
-            mutex: command_config.mutex,
+            no_concurrent_exec: command_config.no_concurrent_exec,
         })
     }
 
@@ -418,6 +418,7 @@ pub enum StreamCommandResult {
     ExitCode(Option<i32>),
     TaskKilled,
     UnableToKillTask(String),
+    ServerShutdown,
     Error(String),
 }
 
@@ -514,7 +515,8 @@ impl Tasks {
     }
 
     /// Return an iterator over the list of tasks visible to this user
-    pub fn visible_to<'a>(&'a self, user: &'a User) -> impl Iterator<Item = &Task> + 'a {
+    pub fn visible_to<'a>(&'a mut self, user: &'a User) -> impl Iterator<Item = &Task> + 'a {
+        self.cleanup();
         self.tasks
             .iter()
             .filter_map(|(_, task)| task.if_visible_to(user))
@@ -560,6 +562,7 @@ impl Tasks {
 
     /// Send the kill signal to the given task as the given [User]
     pub fn kill(&mut self, id: &TaskId, user: &User) -> Option<bool> {
+        self.cleanup();
         if self
             .tasks
             .get(id)
@@ -570,6 +573,23 @@ impl Tasks {
             }
         }
         None
+    }
+
+    /// Look for dead tasks and remove them
+    pub fn cleanup(&mut self) {
+        // When a client closes a connection to a stream endpoint, the responder is dropped by the runtime.
+        // This drops the task (therefore kills the process) and the kill signal channel, without calling
+        // [remove]. In this case, we need to manually look for canceled channels and remove the corresponding
+        // tasks.
+        let tasks_to_remove: Vec<TaskId> = self
+            .kill_signal_senders
+            .iter()
+            .filter(|(_, channel)| channel.is_canceled())
+            .map(|(task_id, _)| task_id.clone())
+            .collect();
+        for task_id in tasks_to_remove {
+            self.remove(&task_id);
+        }
     }
 }
 
