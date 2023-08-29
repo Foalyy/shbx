@@ -1,6 +1,7 @@
 use crate::{
     command::{
-        Command, CommandName, CommandResult, Commands, StreamCommandResult, Task, TaskId, Tasks,
+        Command, CommandName, CommandResult, Commands, ServerShutdown, StreamCommandResult, Task,
+        TaskFinished, TaskId, TaskKilled, Tasks,
     },
     config::Config,
     db::{self, DB},
@@ -254,6 +255,7 @@ impl Response {
         stdout: String,
         stderr: String,
         error: &std::io::Error,
+        execution_time: u128,
     ) -> Self {
         Self::CommandFailedWithOutput(Json(MessageResponseWithOutput {
             result: ResultStatus::Error,
@@ -261,6 +263,7 @@ impl Response {
             message: format!("Command failed : {error}"),
             stdout,
             stderr,
+            execution_time,
         }))
     }
 
@@ -279,49 +282,72 @@ impl Response {
     }
 
     /// Return a CommandTimeout response
-    pub fn command_timeout(timeout: Duration) -> Self {
-        Self::CommandTimeout(Json(Self::command_timeout_response(timeout)))
+    pub fn command_timeout(timeout: Duration, execution_time: u128) -> Self {
+        Self::CommandTimeout(Json(Self::command_timeout_response(
+            timeout,
+            execution_time,
+        )))
     }
 
     /// Return the inner [MessageResponse] for a CommandTimeout response
-    pub fn command_timeout_response(timeout: Duration) -> MessageResponse {
+    pub fn command_timeout_response(timeout: Duration, execution_time: u128) -> MessageResponse {
         MessageResponse {
             result: ResultStatus::Error,
             code: ResultCode::RequestTimeout,
-            message: format!("Command timeout after {}ms", timeout.as_millis()),
+            message: format!(
+                "Command timeout after {}ms (actual execution time: {}ms)",
+                timeout.as_millis(),
+                execution_time
+            ),
         }
     }
 
     /// Return a CommandTimeoutWithOutput response
-    pub fn command_timeout_with_output(stdout: String, stderr: String, timeout: Duration) -> Self {
+    pub fn command_timeout_with_output(
+        stdout: String,
+        stderr: String,
+        timeout: Duration,
+        execution_time: u128,
+    ) -> Self {
         Self::CommandTimeoutWithOutput(Json(MessageResponseWithOutput {
             result: ResultStatus::Error,
             code: ResultCode::RequestTimeout,
             message: format!("Command timeout after {}ms", timeout.as_millis()),
             stdout,
             stderr,
+            execution_time,
         }))
     }
 
     /// Return a CommandAbortedWithOutput response
-    pub fn command_aborted_with_output(stdout: String, stderr: String) -> Self {
+    pub fn command_aborted_with_output(
+        stdout: String,
+        stderr: String,
+        execution_time: u128,
+    ) -> Self {
         Self::CommandAbortedWithOutput(Json(MessageResponseWithOutput {
             result: ResultStatus::Error,
             code: ResultCode::Gone,
             message: "Command was killed or aborted unexpectedly without an exit code".to_string(),
             stdout,
             stderr,
+            execution_time,
         }))
     }
 
     /// Return a ServerShutdownWithOutput response
-    pub fn server_shutdown_with_output(stdout: String, stderr: String) -> Self {
+    pub fn server_shutdown_with_output(
+        stdout: String,
+        stderr: String,
+        execution_time: u128,
+    ) -> Self {
         Self::ServerShutdownWithOutput(Json(MessageResponseWithOutput {
             result: ResultStatus::Error,
             code: ResultCode::ServiceUnavailable,
             message: "Server is shutting down".to_string(),
             stdout,
             stderr,
+            execution_time,
         }))
     }
 
@@ -433,6 +459,7 @@ pub struct MessageResponseWithOutput {
     message: String,
     stdout: String,
     stderr: String,
+    execution_time: u128,
 }
 
 /// Specifies whether this request was successful or not
@@ -747,6 +774,7 @@ pub async fn route_exec_command(
                 // Get the output of the child process as a Stream
                 let mut cmd_stream = ProcessLineStream::from(child);
 
+                let start_time = Instant::now();
                 let mut stdout = String::new();
                 let mut stderr = String::new();
                 let mut exit_code: Option<i32> = None;
@@ -774,23 +802,28 @@ pub async fn route_exec_command(
                                 None => {
                                     if let Some(error) = exit_status_error {
                                         // The process output stream returned a Done(Err(_))
-                                        break Response::command_failed_with_output(stdout, stderr, &error);
+                                        break Response::command_failed_with_output(stdout, stderr, &error, start_time.elapsed().as_millis());
 
                                     } else if let Some(exit_code) = exit_code {
                                         // The process finished and returned an exit code
-                                        break Response::CommandResult(Json(CommandResult { stdout, stderr, exit_code: Some(exit_code) }));
+                                        break Response::CommandResult(Json(CommandResult {
+                                            stdout,
+                                            stderr,
+                                            exit_code: Some(exit_code),
+                                            execution_time: start_time.elapsed().as_millis(),
+                                        }));
 
                                     } else {
                                         // The process finished but didn't return an exit code, which usually means it
                                         // was killed or otherwise aborted by a signal
-                                        break Response::command_aborted_with_output(stdout, stderr);
+                                        break Response::command_aborted_with_output(stdout, stderr, start_time.elapsed().as_millis());
                                     }
                                 }
                             }
                         }
                         () = &mut timeout => {
                             // Timeout expired
-                            break Response::command_timeout_with_output(stdout, stderr, timeout_duration);
+                            break Response::command_timeout_with_output(stdout, stderr, timeout_duration, start_time.elapsed().as_millis());
                         }
                         _ = &mut task_kill_signal_recv => {
                             // Received a message on the kill channel : try to kill the child process
@@ -799,7 +832,7 @@ pub async fn route_exec_command(
                             }
                         }
                         _ = &mut shutdown => {
-                            break Response::server_shutdown_with_output(stdout, stderr);
+                            break Response::server_shutdown_with_output(stdout, stderr, start_time.elapsed().as_millis());
                         }
                     }
                 }
@@ -884,6 +917,7 @@ pub async fn route_exec_command_stream_events<'a>(
                     // Get the output of the child process as a Stream
                     let mut cmd_stream = ProcessLineStream::from(child);
 
+                    let start_time = Instant::now();
                     loop {
                         tokio::select! {
                             item = cmd_stream.next() => {
@@ -894,7 +928,12 @@ pub async fn route_exec_command_stream_events<'a>(
                                     Some(Item::Stderr(data)) => yield Event::json(&StreamCommandResult::Stderr(data)),
 
                                     // - an exit status
-                                    Some(Item::Done(Ok(status))) => yield Event::json(&StreamCommandResult::ExitCode(status.code())),
+                                    Some(Item::Done(Ok(status))) => yield Event::json(&StreamCommandResult::TaskFinished(
+                                        TaskFinished {
+                                            exit_code: status.code(),
+                                            execution_time: start_time.elapsed().as_millis(),
+                                        }
+                                    )),
                                     Some(Item::Done(Err(error))) => yield Event::json(&StreamCommandResult::Error(format!("{error}"))),
 
                                     // - (no more events available because the process finished)
@@ -903,21 +942,29 @@ pub async fn route_exec_command_stream_events<'a>(
                             }
                             () = &mut timeout => {
                                 // Timeout expired
-                                yield Event::json(&Response::command_timeout_response(timeout_duration));
+                                yield Event::json(&Response::command_timeout_response(timeout_duration, start_time.elapsed().as_millis()));
                                 break;
                             }
                             _ = &mut task_kill_signal_recv => {
                                 // Received a message on the kill channel : try to kill the child process
                                 if let Some(child) = cmd_stream.child_mut() {
                                     match child.kill().await {
-                                        Ok(()) => yield Event::json(&StreamCommandResult::TaskKilled),
+                                        Ok(()) => yield Event::json(&StreamCommandResult::TaskKilled(
+                                            TaskKilled {
+                                                execution_time: start_time.elapsed().as_millis(),
+                                            }
+                                        )),
                                         Err(error) => yield Event::json(&StreamCommandResult::UnableToKillTask(error.to_string())),
                                     }
                                 }
                                 break;
                             }
                             _ = &mut shutdown => {
-                                yield Event::json(&StreamCommandResult::ServerShutdown);
+                                yield Event::json(&StreamCommandResult::ServerShutdown(
+                                    ServerShutdown {
+                                        execution_time: start_time.elapsed().as_millis(),
+                                    }
+                                ));
                                 break;
                             }
                         }
@@ -993,6 +1040,7 @@ pub async fn route_exec_command_stream_text<'a>(
                     // Get the output of the child process as a Stream
                     let mut cmd_stream = ProcessLineStream::from(child);
 
+                    let start_time = Instant::now();
                     loop {
                         tokio::select! {
                             item = cmd_stream.next() => {
@@ -1003,7 +1051,12 @@ pub async fn route_exec_command_stream_text<'a>(
                                     Some(Item::Stderr(text)) => yield format!("{text}\n"),
 
                                     // - an exit status
-                                    Some(Item::Done(Ok(status))) => yield format!("{}\n", json!(&StreamCommandResult::ExitCode(status.code()))),
+                                    Some(Item::Done(Ok(status))) => yield format!("{}\n", json!(&StreamCommandResult::TaskFinished(
+                                        TaskFinished {
+                                            exit_code: status.code(),
+                                            execution_time: start_time.elapsed().as_millis(),
+                                        }
+                                    ))),
                                     Some(Item::Done(Err(error))) => yield format!("{}\n", json!(&StreamCommandResult::Error(format!("{error}")))),
 
                                     // - (no more events available because the process finished)
@@ -1012,21 +1065,29 @@ pub async fn route_exec_command_stream_text<'a>(
                             }
                             () = &mut timeout => {
                                 // Timeout expired
-                                yield format!("{}\n", json!(&Response::command_timeout_response(timeout_duration)));
+                                yield format!("{}\n", json!(&Response::command_timeout_response(timeout_duration, start_time.elapsed().as_millis())));
                                 break;
                             }
                             _ = &mut task_kill_signal_recv => {
                                 // Received a message on the kill channel : try to kill the child process
                                 if let Some(child) = cmd_stream.child_mut() {
                                     match child.kill().await {
-                                        Ok(()) => yield format!("{}\n", json!(&StreamCommandResult::TaskKilled)),
+                                        Ok(()) => yield format!("{}\n", json!(&StreamCommandResult::TaskKilled(
+                                            TaskKilled {
+                                                execution_time: start_time.elapsed().as_millis(),
+                                            }
+                                        ))),
                                         Err(error) => yield format!("{}\n", json!(&StreamCommandResult::UnableToKillTask(error.to_string()))),
                                     }
                                 }
                                 break;
                             }
                             _ = &mut shutdown => {
-                                yield format!("{}\n", json!(&StreamCommandResult::ServerShutdown));
+                                yield format!("{}\n", json!(&StreamCommandResult::ServerShutdown(
+                                    ServerShutdown {
+                                        execution_time: start_time.elapsed().as_millis(),
+                                    }
+                                )));
                                 break;
                             }
                         }

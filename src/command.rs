@@ -396,16 +396,7 @@ pub struct CommandResult {
     pub stdout: String,
     pub stderr: String,
     pub exit_code: Option<i32>,
-}
-
-impl From<std::process::Output> for CommandResult {
-    fn from(value: std::process::Output) -> Self {
-        Self {
-            stdout: String::from_utf8_lossy(&value.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&value.stderr).to_string(),
-            exit_code: value.status.code(),
-        }
-    }
+    pub execution_time: u128,
 }
 
 /// Item in a result stream of a command that was executed by a user
@@ -415,11 +406,27 @@ pub enum StreamCommandResult {
     TaskId(String),
     Stdout(String),
     Stderr(String),
-    ExitCode(Option<i32>),
-    TaskKilled,
+    TaskFinished(TaskFinished),
+    TaskKilled(TaskKilled),
     UnableToKillTask(String),
-    ServerShutdown,
+    ServerShutdown(ServerShutdown),
     Error(String),
+}
+
+#[derive(Serialize, Debug)]
+pub struct TaskFinished {
+    pub exit_code: Option<i32>,
+    pub execution_time: u128,
+}
+
+#[derive(Serialize, Debug)]
+pub struct TaskKilled {
+    pub execution_time: u128,
+}
+
+#[derive(Serialize, Debug)]
+pub struct ServerShutdown {
+    pub execution_time: u128,
 }
 
 /// A [Command] currently running
