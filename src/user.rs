@@ -19,17 +19,20 @@ use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use strum::{Display, EnumString};
 use tokio::sync::RwLock;
+use utoipa::ToSchema;
 
 /// A user that can log in the system
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, ToSchema)]
 pub struct User {
     pub username: String,
     pub role: UserRole,
     #[serde(skip)]
     pub hashed_password: Option<String>,
+    #[schema(inline)]
     pub api_key: ApiKey,
     #[serde(skip)]
     pub session_key: Option<ApiKey>,
+    #[schema(value_type = Vec<String>)]
     pub commands: Vec<CommandName>,
 }
 
@@ -207,24 +210,29 @@ pub enum UserRequestGuardError {
 }
 
 /// Information about a new user to create, deserialized from Json data
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, ToSchema)]
 pub struct NewUser {
     pub username: String,
     pub role: UserRole,
+    #[schema(value_type = String)]
     pub password: PlaintextPassword,
+    #[schema(value_type = Vec<String>)]
     pub commands: Vec<CommandName>,
 }
 
-/// Information that can be updated about a user, deserialized from Json data
-#[derive(Debug, Deserialize, Clone)]
+/// Information that can be updated about a user, deserialized from Json data.
+/// All fields are optional.
+#[derive(Debug, Deserialize, Clone, ToSchema)]
 pub struct UpdatedUser {
     pub role: Option<UserRole>,
+    #[schema(value_type = Option<String>)]
     pub password: Option<PlaintextPassword>,
+    #[schema(value_type = Option<Vec<String>>)]
     pub commands: Option<Vec<CommandName>>,
 }
 
 /// Available roles for users
-#[derive(Display, Serialize, Deserialize, EnumString, PartialEq, Clone, Copy, Debug)]
+#[derive(Display, Serialize, Deserialize, EnumString, PartialEq, Clone, Copy, Debug, ToSchema)]
 #[strum(serialize_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum UserRole {

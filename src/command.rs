@@ -10,6 +10,7 @@ use std::{
     collections::HashMap, fmt::Display, ops::Deref, path::PathBuf, process::Stdio, time::SystemTime,
 };
 use tokio::process;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 pub type CommandName = String;
@@ -31,10 +32,14 @@ pub struct CommandConfig {
 }
 
 /// A command that ShellBox can execute
-#[derive(Clone, Serialize, Debug)]
+#[derive(Clone, Serialize, Debug, ToSchema)]
 pub struct Command {
-    pub name: String,
+    /// Unique identifier for the command
+    #[schema(value_type = String)]
+    pub name: CommandName,
+    /// Human-readable label displayed to the user
     pub label: String,
+    /// Execute this command inside a shell
     pub shell: bool,
     #[serde(skip)]
     pub timeout_millis: u64,
@@ -42,6 +47,7 @@ pub struct Command {
     pub user: Option<unix_users::User>,
     #[serde(skip)]
     pub group: Option<unix_users::Group>,
+    /// Command to execute
     pub exec: String,
     #[serde(skip)]
     pub cmd: CommandExec,
@@ -391,11 +397,15 @@ pub struct CommandsConfig {
 }
 
 /// Result of a command that was executed by a user
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, ToSchema)]
 pub struct CommandResult {
+    /// Output that the command printed on stdout
     pub stdout: String,
+    /// Output that the command printed on stderr
     pub stderr: String,
+    /// Exit code returned by the command, or null if the command was killed
     pub exit_code: Option<i32>,
+    /// Total time taken by the command to execute, in milliseconds
     pub execution_time: u128,
 }
 
@@ -429,11 +439,16 @@ pub struct ServerShutdown {
     pub execution_time: u128,
 }
 
-/// A [Command] currently running
-#[derive(Debug, Clone, Serialize)]
+/// A Command currently running
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Task {
+    /// Name of the command that this task is executing
+    #[schema(value_type = String)]
     pub name: CommandName,
+    /// Unique ID of the task
+    #[schema(inline)]
     pub id: TaskId,
+    /// Name of the user that launched this task
     pub launched_by: String,
 }
 
@@ -467,8 +482,8 @@ impl Task {
     }
 }
 
-/// A unique identifier for a running [Task]
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+/// A unique identifier for a running Task
+#[derive(Debug, Clone, Eq, Hash, PartialEq, ToSchema)]
 pub struct TaskId(Uuid);
 
 impl TaskId {

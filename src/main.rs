@@ -5,6 +5,7 @@ mod api;
 mod command;
 mod config;
 mod db;
+mod openapi_doc;
 mod user;
 mod utils;
 
@@ -12,6 +13,7 @@ use api::SessionStore;
 use command::{CommandConfigError, Commands, Tasks};
 use config::Config;
 use db::DB;
+use openapi_doc::ApiDoc;
 use rocket::fairing::AdHoc;
 use rocket::serde::json::serde_json;
 use rocket_db_pools::{sqlx, Database};
@@ -20,6 +22,9 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use thiserror::Error;
 use tokio::sync::RwLock;
+use utoipa::OpenApi;
+use utoipa_rapidoc::RapiDoc;
+use utoipa_swagger_ui::SwaggerUi;
 
 #[launch]
 async fn rocket() -> _ {
@@ -81,6 +86,14 @@ async fn rocket() -> _ {
                 api::catcher_internal_server_error,
             ],
         )
+        .mount(
+            "/",
+            SwaggerUi::new("/api/doc/<_..>").url("/api-docs/openapi.json", ApiDoc::openapi()),
+        )
+        .mount(
+            "/",
+            RapiDoc::new("/api-docs/openapi.json").path("/api/rapidoc"),
+        )
         .attach(DB::init())
         .attach(AdHoc::try_on_ignite(
             "Database schema init",
@@ -92,7 +105,8 @@ async fn rocket() -> _ {
         .manage(config)
         .attach(AdHoc::on_liftoff("Startup message", move |_| {
             Box::pin(async move {
-                println!("## ShellBox started on {address}:{port}");
+                println!("ShellBox started on {address}:{port}");
+                println!("API documentation available on /api/doc and /api/rapidoc");
             })
         }))
 }
