@@ -884,7 +884,7 @@ pub async fn route_commands_list(
     path = "/commands/{command_name}",
     context_path = "/api",
     params(
-        ("command_name", description = "The name of the command to execute", example="restart_my_service")
+        ("command_name" = String, description = "The name of the command to execute", example="restart_my_service")
     ),
     responses(
         (status = OK, description = "The command was executed successfully", body = CommandResult, example = json!(CommandResult {
@@ -1334,9 +1334,9 @@ pub async fn route_tasks_list(user: User, tasks: &State<RwLock<Tasks>>) -> Respo
 
 /// Kill a currently-running task
 #[utoipa::path(
-    post,
+    delete,
     tag = "Tasks",
-    path = "/tasks/{task_id}/kill",
+    path = "/tasks/{task_id}",
     context_path = "/api",
     params(
         ("task_id", description = "The id of the task to kill", example="f99b9779-7a03-4be0-aee9-1de93ea901b8")
@@ -1351,7 +1351,7 @@ pub async fn route_tasks_list(user: User, tasks: &State<RwLock<Tasks>>) -> Respo
     ),
     security(("api_key" = [])),
 )]
-#[post("/tasks/<task_id>/kill")]
+#[delete("/tasks/<task_id>")]
 pub async fn route_task_kill(
     user: User,
     tasks: &State<RwLock<Tasks>>,
