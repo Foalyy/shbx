@@ -1,0 +1,321 @@
+:root {
+    --primary_color: #d0ab18;
+}
+
+.overlay-loading,
+.overlay-login {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    background-color: var(--window_bg_color);
+    transition: background-color 200ms ease-in-out;
+}
+
+.overlay-loading-spinner {
+    font-size: 200%;
+    opacity: 0.1;
+}
+
+.login-logo {
+    font-size: 200%;
+    margin-bottom: 2rem;
+    opacity: 0.1;
+    font-family: monospace;
+}
+
+.frame-card-login {
+    max-width: 300px;
+    padding: 1em;
+    margin-bottom: 5rem;
+}
+
+.frame-card-login input[type="text"],
+.frame-card-login input[type="password"] {
+    display: block;
+    margin-bottom: 1em;
+}
+
+.frame-card-login .btn-toggle-theme {
+    opacity: 0.5;
+}
+
+.blurred {
+    filter: blur(3px);
+}
+
+.main-logo {
+    font-size: 200%;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    text-align: center;
+    color: var(--primary_color);
+    font-family: monospace;
+}
+
+.main-menu {
+    justify-content: center;
+    opacity: 0.7;
+}
+
+.commands {
+    padding: 1em;
+}
+
+.command {
+    margin-bottom: 1em;
+    padding: 1em 1.5em;
+    opacity: 0.7;
+    transition: opacity 200ms ease-in-out;
+}
+
+.command:hover {
+    opacity: 1;
+}
+
+.command-icon-large {
+    font-size: 3em;
+    color: var(--primary_color);
+    padding-right: 0.1em;
+}
+
+.command-icon {
+    color: var(--primary_color);
+}
+
+.command-info-sub {
+    gap: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+.command-label-box {
+    padding-right: 0;
+}
+
+.task-id-box,
+.command-name-box,
+.command-exec-box,
+.running-task-box {
+    display: flex;
+    gap: 0.3em;
+    align-items: center;
+    font-size: 80%;
+}
+
+.task-id-box,
+.command-name-box {
+    opacity: 0.5;
+    margin-top: 0.1em;
+}
+
+.task-id-box {
+    justify-content: center;
+}
+
+.command-name {
+    font-weight: bold;
+}
+
+.command-exec-box {
+    background-color: #101010;
+    border-radius: 0.6em;
+    padding: 0.4em 0.6em;
+    margin-left: 0.2em;
+    color: var(--light_1);
+}
+
+.command-exec {
+    font-family: monospace;
+}
+
+.command-exec-box .fa-hashtag {
+    opacity: 0.5;
+}
+
+.command-running-tasks {
+    margin-left: 1em;
+    opacity: 0.8;
+}
+
+.running-task-box-container {
+    display: flex;
+    gap: 0.3em;
+    align-items: center;
+    font-size: 80%;
+    margin-top: 0.5em;
+}
+
+.running-task-box {
+    opacity: 0.8;
+}
+
+.running-task-open {
+    cursor: pointer;
+}
+
+.command-run-box {
+    text-align: center;
+    padding: 0.8em;
+}
+
+.overlay-task {
+    width: 100vw;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    padding: 3em 1em;
+}
+
+.overlay-task > .container {
+    height: 100%;
+}
+
+.task {
+    background-color: hsla(var(--dialog_bg_color_hsl), 0.95);
+    border-radius: 16px;
+    padding: 1em 1.5em 1.5em 1.5em;
+    height: 100%;
+    box-shadow: 0px 0px 8px 1px #00000020;
+    display: flex;
+    flex-direction: column;
+}
+
+.task-header {
+    justify-content: center;
+    margin-left: 0.3em;
+}
+
+.task-header > .col {
+    margin-top: 0.7em;
+    padding-left: 0.5em;
+    padding-right: 0.5em;
+}
+
+.task .command-name-box {
+    margin-top: 1.2em;
+}
+
+.task-exec-box-parent {
+    margin-top: 0.7em;
+}
+
+.task .command-exec-box {
+    margin-left: 0;
+    padding: 0.7em 0.9em;
+}
+
+.command-error-box-parent {
+    justify-content: center;
+    margin-top: 0.7em;
+}
+
+.command-error-box {
+    display: flex;
+    gap: 0.3em;
+    align-items: center;
+}
+
+.task-close-parent,
+.autoscroll-parent,
+.task-kill-parent {
+    padding-left: 0;
+}
+
+.task-close-parent {
+    padding-right: 0;
+}
+
+.command-output-container {
+    flex-grow: 1;
+    min-height: 0;
+    margin-top: 1em;
+}
+
+.command-output-container .col {
+    max-height: 100%;
+}
+
+.task .command-output {
+    flex-grow: 1;
+    background-color: #101010;
+    border-radius: 0.6em;
+    padding: 0.4em 0.6em;
+    height: 100%;
+    font-family: monospace;
+    font-size: 80%;
+    white-space: pre-wrap;
+    overflow: scroll;
+}
+
+.task .command-output .stdout,
+.task .command-output .stderr,
+.task .command-output .diag {
+    padding: 0.2em 0;
+    color: var(--light_1);
+}
+
+.task .command-output .stderr {
+    color: hsl(var(--orange_3_hsl));
+}
+
+.task .command-output .diag {
+    opacity: 0.3;
+    font-style: italic;
+}
+
+.task .command-output .diag.error-fg {
+    opacity: 0.5;
+    font-style: italic;
+}
+
+@media (max-width: 575px) { 
+    .main-logo {
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .commands {
+        padding: 0.5em 0;
+    }
+
+    .command-container {
+        margin: 0;
+    }
+
+    .command-container .col {
+        padding: 0;
+    }
+
+    .command {
+        border-radius: 0;
+        padding-left: 1em;
+        padding-right: 1em;
+        margin-bottom: 2px;
+    }
+
+    .overlay-task {
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    .overlay-task .container {
+        padding: 0;
+    }
+
+    .task {
+        border-radius: 0;
+        padding-left: 1em;
+        padding-right: 1em;
+    }
+
+    .task-header > .col {
+        padding-left: 0.3em;
+        padding-right: 0.3em;
+    }
+}

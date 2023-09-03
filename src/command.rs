@@ -1,4 +1,5 @@
 use crate::{
+    api::ResultCode,
     config::Config,
     user::{User, UserRole},
     utils, Error,
@@ -40,6 +41,7 @@ pub struct Command {
     /// Human-readable label displayed to the user
     pub label: String,
     /// Execute this command inside a shell
+    #[serde(skip)]
     pub shell: bool,
     #[serde(skip)]
     pub timeout_millis: u64,
@@ -411,32 +413,73 @@ pub struct CommandResult {
 
 /// Item in a result stream of a command that was executed by a user
 #[derive(Serialize, Debug)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", tag = "event")]
 pub enum StreamCommandResult {
-    TaskId(String),
-    Stdout(String),
-    Stderr(String),
+    TaskStarted(TaskStarted),
+    Stdout(TaskStdout),
+    Stderr(TaskStderr),
+    TaskTimeout(TaskTimeout),
     TaskFinished(TaskFinished),
     TaskKilled(TaskKilled),
-    UnableToKillTask(String),
+    UnableToKillTask(UnableToKillTask),
     ServerShutdown(ServerShutdown),
-    Error(String),
+    Error(TaskError),
+}
+
+#[derive(Serialize, Debug)]
+pub struct TaskStarted {
+    pub task_id: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct TaskStdout {
+    pub task_id: String,
+    pub output: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct TaskStderr {
+    pub task_id: String,
+    pub output: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct TaskTimeout {
+    pub task_id: String,
+    pub timeout: u128,
+    pub execution_time: u128,
 }
 
 #[derive(Serialize, Debug)]
 pub struct TaskFinished {
+    pub task_id: String,
     pub exit_code: Option<i32>,
     pub execution_time: u128,
 }
 
 #[derive(Serialize, Debug)]
 pub struct TaskKilled {
+    pub task_id: String,
     pub execution_time: u128,
 }
 
 #[derive(Serialize, Debug)]
+pub struct UnableToKillTask {
+    pub task_id: String,
+    pub message: String,
+}
+
+#[derive(Serialize, Debug)]
 pub struct ServerShutdown {
+    pub task_id: String,
     pub execution_time: u128,
+}
+
+#[derive(Serialize, Debug)]
+pub struct TaskError {
+    pub task_id: String,
+    pub code: ResultCode,
+    pub message: String,
 }
 
 /// A Command currently running
@@ -612,6 +655,12 @@ impl Tasks {
         for task_id in tasks_to_remove {
             self.remove(&task_id);
         }
+    }
+}
+
+impl Default for Tasks {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

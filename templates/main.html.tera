@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>ShellBox</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com">
+        <link href="https://fonts.googleapis.com/css2?family=Cantarell" rel="stylesheet">
+        <link rel="stylesheet" href="/static/css/normalize.css">
+        <link rel="stylesheet" href="/static/css/bootstrap-grid.min.css">
+        <link rel="stylesheet" href="/static/css/web_adwaita.css">
+        <link rel="stylesheet" href="/static/css/main.css">
+        <link rel="shortcut icon" href="/static/favicon.png">
+        <script defer src="/static/js/solid.min.js"></script>
+        <script defer src="/static/js/fontawesome.min.js"></script>
+        <script defer src="/static/js/js.cookie.min.js"></script>
+        <script defer src="/static/js/sse.js"></script>
+        <script defer src="/static/js/cash.min.js"></script>
+        <script defer src="/static/js/shellbox.js"></script>
+    </head>
+    <body class="dark">
+        <div class="main">
+            <div class="main-logo"><i class="fa-solid fa-terminal"></i> ShellBox</div>
+            <div class="main-menu row">
+                <div class="col-auto"><a href="#" class="button flat btn-toggle-theme" onclick="event.preventDefault(); toggleTheme();"><i class="fa-solid fa-moon hidden"></i><i class="fa-solid fa-sun"></i></a></div>
+                <div class="col-auto"><a href="#" class="button flat" onclick="event.preventDefault(); logout();"><i class="fa-solid fa-right-from-bracket"></i></a></div>
+            </div>
+            <div class="command-template hidden">
+                <div class="row command-container">
+                    <div class="col">
+                        <div class="container frame-card command">
+                            <div class="row align-items-center">
+                                <div class="col-auto command-icon-large d-none d-md-block"><i class="fa-solid fa-terminal"></i></div>
+                                <div class="col-12 col-md command-info">
+                                    <div class="row align-items-center command-info-sub">
+                                        <div class="col-12 col-md-auto command-label-box"><i class="fa-solid fa-terminal command-icon d-inline-block d-md-none"></i> <div class="command-label d-inline-block"></div></div>
+                                        <div class="col-12 col-md-auto command-name-box"><div><i class="fa-solid fa-tag"></i></div> <div class="command-name"></div></div>
+                                    </div>
+                                    <div class="command-exec-box"><div><i class="fa-solid fa-hashtag"></i></div> <div class="command-exec"></div></div>
+                                    <div class="command-running-tasks"></div>
+                                </div>
+                                <div class="col-12 col-md-auto command-run-box"><button class="text-image-button accent command-run"><i class="fa-solid fa-play"></i> Run</button></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="container commands">
+            </div>
+        </div>
+        <div class="overlay-task hidden" onclick="closeCommand()">
+            <div class="container" onclick="event.stopPropagation()">
+                <div class="task">
+                    <div class="row">
+                        <div class="col">
+                            <div class="row align-items-center task-header">
+                                <div class="col col-auto"><i class="fa-solid fa-terminal command-icon"></i></div>
+                                <div class="col col-auto"><div class="command-label"></div></div>
+                                <div class="col col-auto command-name-box"><div><i class="fa-solid fa-tag"></i></div> <div class="command-name"></div></div>
+                                <div class="col"></div>
+                                <div class="col col-12 col-sm-auto task-id-box hidden"><div class="task-id"></div> <i class="fa-solid fa-gear fa-spin hidden task-running"></i><i class="fa-solid fa-circle-check task-success hidden"></i><i class="fa-solid fa-circle-xmark task-error hidden"></i></div>
+                                <div class="col col-auto command-run-container"><button class="text-image-button suggested-action command-run"><i class="fa-solid fa-play"></i> Run</button></div>
+                            </div>
+                        </div>
+                        <div class="col-auto task-close-parent"><button class="image-button flat circular" onclick="closeCommand()"><i class="fa-solid fa-xmark"></i></button></div>
+                    </div>
+                    <div class="row align-items-center task-exec-box-parent">
+                        <div class="col">
+                            <div class="command-exec-box"><div><i class="fa-solid fa-hashtag"></i></div> <div class="command-exec"></div></div>
+                        </div>
+                        <div class="col-auto autoscroll-parent hidden">
+                            <button class="image-button autoscroll flat" title="Autoscroll"><i class="fa-solid fa-angles-down"></i></button>
+                        </div>
+                        <div class="col-auto task-kill-parent hidden">
+                            <button class="text-image-button destructive-action task-kill" title="Kill this task"><i class="fa-solid fa-skull-crossbones"></i> Kill</button>
+                        </div>
+                    </div>
+                    <div class="row align-items-center command-error-box-parent hidden">
+                        <div class="col-auto">
+                            <div class="command-error-box error-fg"><div><i class="fa-solid fa-circle-exclamation"></i></div> <div class="command-error">Command already running</div></div>
+                        </div>
+                    </div>
+                    <div class="row command-output-container">
+                        <div class="col">
+                            <div class="command-output"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="overlay-login hidden">
+            <div class="login-logo"><i class="fa-solid fa-terminal"></i> ShellBox</div>
+            <div class="frame-card frame-card-login">
+                {% if flash %}
+                    <div class="alert {{ flash.kind }}"><i class="fa-solid fa-circle-exclamation"></i> {{ flash.message }}</div>
+                {% endif %}
+                <form method="POST" action="{{ login_url | safe }}">
+                    <input type="text" name="username" placeholder="Username">
+                    <input type="password" name="password" placeholder="Password">
+                    <div class="row align-items-center">
+                        <div class="col-auto"><a href="#" class="button flat btn-toggle-theme" onclick="event.preventDefault(); toggleTheme();"><i class="fa-solid fa-moon hidden"></i><i class="fa-solid fa-sun"></i></a></div>
+                        <div class="col"></div>
+                        <div class="col-auto"><button type="submit" class="text-image-button accent"><i class="fa-solid fa-right-to-bracket"></i> Login</button></div>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="overlay-loading">
+            <div class="overlay-loading-spinner">
+                <i class="fa-solid fa-circle-notch fa-spin"></i>
+            </div>
+        </div>
+    </body>
+</html>

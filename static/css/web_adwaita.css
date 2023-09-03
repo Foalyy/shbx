@@ -1,0 +1,906 @@
+:root {
+  --theme_change_transition_time: 200ms;
+  --blue_1_hsl: 214, 72%, 74%;
+  --blue_2_hsl: 213, 63%, 65%;
+  --blue_3_hsl: 213, 74%, 52%;
+  --blue_4_hsl: 213, 77%, 46%;
+  --blue_5_hsl: 213, 77%, 40%;
+  --green_1_hsl: 113, 73%, 79%;
+  --green_2_hsl: 126, 58%, 64%;
+  --green_3_hsl: 147, 51%, 49%;
+  --green_4_hsl: 157, 53%, 50%;
+  --green_5_hsl: 148, 48%, 37%;
+  --yellow_1_hsl: 60, 88%, 68%;
+  --yellow_2_hsl: 55, 86%, 61%;
+  --yellow_3_hsl: 56, 86%, 44%;
+  --yellow_4_hsl: 50, 92%, 33%;
+  --yellow_5_hsl: 43, 86%, 26%;
+  --orange_1_hsl: 35, 100%, 74%;
+  --orange_2_hsl: 27, 100%, 62%;
+  --orange_3_hsl: 30, 100%, 50%;
+  --orange_4_hsl: 23, 88%, 48%;
+  --orange_5_hsl: 19, 71%, 38%;
+  --red_1_hsl: 6, 86%, 63%;
+  --red_2_hsl: 3, 72%, 49%;
+  --red_3_hsl: 356, 79%, 41%;
+  --red_4_hsl: 356, 75%, 39%;
+  --red_5_hsl: 351, 65%, 34%;
+  --purple_1_hsl: 285, 60%, 75%;
+  --purple_2_hsl: 276, 43%, 63%;
+  --purple_3_hsl: 280, 37%, 50%;
+  --purple_4_hsl: 276, 42%, 42%;
+  --purple_5_hsl: 268, 37%, 32%;
+  --brown_1_hsl: 30, 32%, 65%;
+  --brown_2_hsl: 30, 40%, 45%;
+  --brown_3_hsl: 30, 45%, 35%;
+  --brown_4_hsl: 30, 49%, 31%;
+  --brown_5_hsl: 30, 42%, 24%;
+  --light_1_hsl: 0, 0%, 100%;
+  --light_2_hsl: 36, 12%, 96%;
+  --light_3_hsl: 28, 13%, 86%;
+  --light_4_hsl: 30, 9%, 75%;
+  --light_5_hsl: 30, 6%, 60%;
+  --dark_1_hsl: 235, 5%, 48%;
+  --dark_2_hsl: 240, 7%, 39%;
+  --dark_3_hsl: 285, 18%, 24%;
+  --dark_4_hsl: 257, 23%, 15%;
+  --dark_5_hsl: 0, 0%, 0%;
+  --blue_1: hsl(var(--blue_1_hsl));
+  --blue_2: hsl(var(--blue_2_hsl));
+  --blue_3: hsl(var(--blue_3_hsl));
+  --blue_4: hsl(var(--blue_4_hsl));
+  --blue_5: hsl(var(--blue_5_hsl));
+  --green_1: hsl(var(--green_1_hsl));
+  --green_2: hsl(var(--green_2_hsl));
+  --green_3: hsl(var(--green_3_hsl));
+  --green_4: hsl(var(--green_4_hsl));
+  --green_5: hsl(var(--green_5_hsl));
+  --yellow_1: hsl(var(--yellow_1_hsl));
+  --yellow_2: hsl(var(--yellow_2_hsl));
+  --yellow_3: hsl(var(--yellow_3_hsl));
+  --yellow_4: hsl(var(--yellow_4_hsl));
+  --yellow_5: hsl(var(--yellow_5_hsl));
+  --orange_1: hsl(var(--orange_1_hsl));
+  --orange_2: hsl(var(--orange_2_hsl));
+  --orange_3: hsl(var(--orange_3_hsl));
+  --orange_4: hsl(var(--orange_4_hsl));
+  --orange_5: hsl(var(--orange_5_hsl));
+  --red_1: hsl(var(--red_1_hsl));
+  --red_2: hsl(var(--red_2_hsl));
+  --red_3: hsl(var(--red_3_hsl));
+  --red_4: hsl(var(--red_4_hsl));
+  --red_5: hsl(var(--red_5_hsl));
+  --purple_1: hsl(var(--purple_1_hsl));
+  --purple_2: hsl(var(--purple_2_hsl));
+  --purple_3: hsl(var(--purple_3_hsl));
+  --purple_4: hsl(var(--purple_4_hsl));
+  --purple_5: hsl(var(--purple_5_hsl));
+  --brown_1: hsl(var(--brown_1_hsl));
+  --brown_2: hsl(var(--brown_2_hsl));
+  --brown_3: hsl(var(--brown_3_hsl));
+  --brown_4: hsl(var(--brown_4_hsl));
+  --brown_5: hsl(var(--brown_5_hsl));
+  --light_1: hsl(var(--light_1_hsl));
+  --light_2: hsl(var(--light_2_hsl));
+  --light_3: hsl(var(--light_3_hsl));
+  --light_4: hsl(var(--light_4_hsl));
+  --light_5: hsl(var(--light_5_hsl));
+  --dark_1: hsl(var(--dark_1_hsl));
+  --dark_2: hsl(var(--dark_2_hsl));
+  --dark_3: hsl(var(--dark_3_hsl));
+  --dark_4: hsl(var(--dark_4_hsl));
+  --dark_5: hsl(var(--dark_5_hsl));
+  --accent_bg_color_hsl: var(--blue_3_hsl);
+  --accent_fg_color_hsl: var(--light_1_hsl);
+  --accent_color_hsl: var(--blue_4_hsl);
+  --suggested_bg_color_hsl: var(--blue_3_hsl);
+  --suggested_fg_color_hsl: var(--light_1_hsl);
+  --suggested_color_hsl: var(--blue_4_hsl);
+  --destructive_bg_color_hsl: var(--red_3_hsl);
+  --destructive_fg_color_hsl: var(--light_1_hsl);
+  --destructive_color_hsl: var(--red_4_hsl);
+  --success_bg_color_hsl: var(--green_4_hsl);
+  --success_fg_color_hsl: var(--light_1_hsl);
+  --success_color_hsl: 151, 65%, 31%;
+  --warning_bg_color_hsl: var(--yellow_5_hsl);
+  --warning_color_hsl: 41, 94%, 19%;
+  --error_bg_color_hsl: var(--red_3_hsl);
+  --error_fg_color_hsl: var(--light_1_hsl);
+  --error_color_hsl: var(--red_4_hsl);
+  --window_bg_color_hsl: 0, 0%, 98%;
+  --window_fg_color_hsl: 0, 0%, 20%;
+  --button_bg_color_hsl: 0, 0%, 36%;
+  --view_bg_color_hsl: var(--light_1_hsl);
+  --headerbar_bg_color_hsl: 0, 0%, 92%;
+  --headerbar_backdrop_color_hsl: var(--window_bg_color_hsl);
+  --card_bg_color_hsl: var(--light_1_hsl);
+  --dialog_bg_color_hsl: 0, 0%, 98%;
+  --popover_bg_color_hsl: var(--light_1_hsl);
+  --thumbnail_bg_color_hsl: var(--light_1_hsl);
+  --scrollbar_outline_color_hsl: var(--light_1_hsl);
+  --accent_bg_color: hsl(var(--accent_bg_color_hsl));
+  --accent_fg_color: hsl(var(--accent_fg_color_hsl));
+  --accent_color: hsl(var(--accent_color_hsl));
+  --suggested_bg_color: hsl(var(--suggested_bg_color_hsl));
+  --suggested_fg_color: hsl(var(--suggested_fg_color_hsl));
+  --suggested_color: hsl(var(--suggested_color_hsl));
+  --destructive_bg_color: hsl(var(--destructive_bg_color_hsl));
+  --destructive_fg_color: hsl(var(--destructive_fg_color_hsl));
+  --destructive_color: hsl(var(--destructive_color_hsl));
+  --success_bg_color: hsl(var(--success_bg_color_hsl));
+  --success_fg_color: hsl(var(--success_fg_color_hsl));
+  --success_color: hsl(var(--success_color_hsl));
+  --warning_bg_color: hsl(var(--warning_bg_color_hsl));
+  --warning_fg_color: rgba(0, 0, 0, 0.8);
+  --warning_color: hsl(var(--warning_color_hsl));
+  --error_bg_color: hsl(var(--error_bg_color_hsl));
+  --error_fg_color: hsl(var(--error_fg_color_hsl));
+  --error_color: hsl(var(--error_color_hsl));
+  --window_bg_color: hsl(var(--window_bg_color_hsl));
+  --window_fg_color: hsl(var(--window_fg_color_hsl));
+  --button_bg_color: hsl(var(--button_bg_color_hsl));
+  --view_bg_color: hsl(var(--view_bg_color_hsl));
+  --view_fg_color: rgba(0, 0, 0, 0.8);
+  --headerbar_bg_color: hsl(var(--headerbar_bg_color_hsl));
+  --headerbar_fg_color: rgba(0, 0, 0, 0.8);
+  --headerbar_border_color: rgba(0, 0, 0, 0.8);
+  --headerbar_backdrop_color: hsl(var(--headerbar_backdrop_color_hsl));
+  --headerbar_shade_color: rgba(0, 0, 0, 0.07);
+  --card_bg_color: hsl(var(--card_bg_color_hsl));
+  --card_fg_color: rgba(0, 0, 0, 0.8);
+  --card_shade_color: rgba(0, 0, 0, 0.07);
+  --dialog_bg_color: hsl(var(--dialog_bg_color_hsl));
+  --dialog_fg_color: rgba(0, 0, 0, 0.8);
+  --popover_bg_color: hsl(var(--popover_bg_color_hsl));
+  --popover_fg_color: rgba(0, 0, 0, 0.8);
+  --thumbnail_bg_color: hsl(var(--thumbnail_bg_color_hsl));
+  --thumbnail_fg_color: rgba(0, 0, 0, 0.8);
+  --shade_color: rgba(0, 0, 0, 0.07);
+  --scrollbar_outline_color: hsl(var(--scrollbar_outline_color_hsl));
+}
+
+.dark {
+  --accent_bg_color_hsl: var(--blue_3_hsl);
+  --accent_fg_color_hsl: var(--light_1_hsl);
+  --accent_color_hsl: 208, 69%, 65%;
+  --suggested_bg_color_hsl: var(--blue_3_hsl);
+  --suggested_fg_color_hsl: var(--light_1_hsl);
+  --suggested_color_hsl: 208, 69%, 65%;
+  --destructive_bg_color_hsl: var(--red_4_hsl);
+  --destructive_fg_color_hsl: var(--light_1_hsl);
+  --destructive_color_hsl: 10, 100%, 68%;
+  --success_bg_color_hsl: var(--green_5_hsl);
+  --success_fg_color_hsl: var(--light_1_hsl);
+  --success_color_hsl: var(--green_1_hsl);
+  --warning_bg_color_hsl: 42, 90%, 38%;
+  --warning_fg_color_hsl: rgba(0, 0, 0, 0.8);
+  --warning_color_hsl: var(--yellow_2_hsl);
+  --error_bg_color_hsl: var(--red_4_hsl);
+  --error_fg_color_hsl: var(--light_1_hsl);
+  --error_color_hsl: 10, 100%, 68%;
+  --window_bg_color_hsl: 0, 0%, 14%;
+  --window_fg_color_hsl: var(--light_1_hsl);
+  --button_bg_color_hsl: 0, 0%, 36%;
+  --view_bg_color_hsl: 0, 0%, 11%;
+  --view_fg_color_hsl: var(--light_1_hsl);
+  --headerbar_bg_color_hsl: 0, 0%, 18%;
+  --headerbar_fg_color_hsl: var(--light_1_hsl);
+  --headerbar_border_color_hsl: var(--light_1_hsl);
+  --headerbar_backdrop_color_hsl: var(--window_bg_color_hsl);
+  --card_fg_color_hsl: var(--light_1_hsl);
+  --dialog_bg_color_hsl: 0, 0%, 22%;
+  --dialog_fg_color_hsl: var(--light_1_hsl);
+  --popover_bg_color_hsl: 0, 0%, 22%;
+  --popover_fg_color_hsl: var(--light_1_hsl);
+  --thumbnail_bg_color_hsl: 0, 0%, 22%;
+  --thumbnail_fg_color_hsl: var(--light_1_hsl);
+  --accent_bg_color: hsl(var(--accent_bg_color_hsl));
+  --accent_fg_color: hsl(var(--accent_fg_color_hsl));
+  --accent_color: hsl(var(--accent_color_hsl));
+  --suggested_bg_color: hsl(var(--suggested_bg_color_hsl));
+  --suggested_fg_color: hsl(var(--suggested_fg_color_hsl));
+  --suggested_color: hsl(var(--suggested_color_hsl));
+  --destructive_bg_color: hsl(var(--destructive_bg_color_hsl));
+  --destructive_fg_color: hsl(var(--destructive_fg_color_hsl));
+  --destructive_color: hsl(var(--destructive_color_hsl));
+  --success_bg_color: hsl(var(--success_bg_color_hsl));
+  --success_fg_color: hsl(var(--success_fg_color_hsl));
+  --success_color: hsl(var(--success_color_hsl));
+  --warning_bg_color: hsl(var(--warning_bg_color_hsl));
+  --warning_fg_color: hsl(var(--warning_fg_color_hsl));
+  --warning_color: hsl(var(--warning_color_hsl));
+  --error_bg_color: hsl(var(--error_bg_color_hsl));
+  --error_fg_color: hsl(var(--error_fg_color_hsl));
+  --error_color: hsl(var(--error_color_hsl));
+  --window_bg_color: hsl(var(--window_bg_color_hsl));
+  --window_fg_color: hsl(var(--window_fg_color_hsl));
+  --button_bg_color: hsl(var(--button_bg_color_hsl));
+  --view_bg_color: hsl(var(--view_bg_color_hsl));
+  --view_fg_color: hsl(var(--view_fg_color_hsl));
+  --headerbar_bg_color: hsl(var(--headerbar_bg_color_hsl));
+  --headerbar_fg_color: hsl(var(--headerbar_fg_color_hsl));
+  --headerbar_border_color: hsl(var(--headerbar_border_color_hsl));
+  --headerbar_backdrop_color: hsl(var(--headerbar_backdrop_color_hsl));
+  --headerbar_shade_c: rgba(0, 0, 0, 0.36);
+  --card_bg_color: rgba(255, 255, 255, 0.08);
+  --card_fg_color: hsl(var(--card_fg_color_hsl));
+  --card_shade_color: rgba(0, 0, 0, 0.36);
+  --dialog_bg_color: hsl(var(--dialog_bg_color_hsl));
+  --dialog_fg_color: hsl(var(--dialog_fg_color_hsl));
+  --popover_bg_color: hsl(var(--popover_bg_color_hsl));
+  --popover_fg_color: hsl(var(--popover_fg_color_hsl));
+  --thumbnail_bg_color: hsl(var(--thumbnail_bg_color_hsl));
+  --thumbnail_fg_color: hsl(var(--thumbnail_fg_color_hsl));
+  --shade_color: rgba(0, 0, 0, 0.36);
+  --scrollbar_outline_color: rgba(0, 0, 0, 0.5);
+}
+
+html {
+  box-sizing: border-box;
+  font-size: 16px;
+}
+
+*,
+*:before,
+*:after {
+  box-sizing: inherit;
+}
+
+body {
+  font-family: "Cantarell";
+  margin: 0;
+  padding: 0;
+  color: var(--window_fg_color);
+  background-color: var(--window_bg_color);
+  transition: color var(--theme_change_transition_time) ease-in-out, background-color var(--theme_change_transition_time) ease-in-out;
+}
+
+ol,
+ul {
+  list-style: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.accent {
+  color: var(--accent_color);
+  background-color: hsla(var(--accent_color_hsl), 0.1);
+}
+
+.accent-fg {
+  color: var(--accent_color);
+}
+
+.accent-bg {
+  background-color: hsla(var(--accent_color_hsl), 0.1);
+}
+
+.accent:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--accent_color_hsl), 0.15);
+}
+
+.accent:not(:disabled):not(.disabled):active {
+  background-color: hsla(var(--accent_color_hsl), 0.3);
+}
+
+.accent:not(:disabled):not(.disabled):checked {
+  background-color: hsla(var(--accent_color_hsl), 0.3);
+}
+
+.accent:not(:disabled):not(.disabled):checked:active {
+  background-color: hsla(var(--accent_color_hsl), 0.4);
+}
+
+.accent:not(:disabled):not(.disabled):checked:hover {
+  background-color: hsla(var(--accent_color_hsl), 0.5);
+}
+
+.success {
+  color: var(--success_color);
+  background-color: hsla(var(--success_color_hsl), 0.1);
+}
+
+.success-fg {
+  color: var(--success_color);
+}
+
+.success-bg {
+  background-color: hsla(var(--success_color_hsl), 0.1);
+}
+
+.success:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--success_color_hsl), 0.15);
+}
+
+.success:not(:disabled):not(.disabled):active {
+  background-color: hsla(var(--success_color_hsl), 0.3);
+}
+
+.success:not(:disabled):not(.disabled):checked {
+  background-color: hsla(var(--success_color_hsl), 0.3);
+}
+
+.success:not(:disabled):not(.disabled):checked:active {
+  background-color: hsla(var(--success_color_hsl), 0.4);
+}
+
+.success:not(:disabled):not(.disabled):checked:hover {
+  background-color: hsla(var(--success_color_hsl), 0.5);
+}
+
+.warning {
+  color: var(--warning_color);
+  background-color: hsla(var(--warning_color_hsl), 0.1);
+}
+
+.warning-fg {
+  color: var(--warning_color);
+}
+
+.warning-bg {
+  background-color: hsla(var(--warning_color_hsl), 0.1);
+}
+
+.warning:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--warning_color_hsl), 0.15);
+}
+
+.warning:not(:disabled):not(.disabled):active {
+  background-color: hsla(var(--warning_color_hsl), 0.3);
+}
+
+.warning:not(:disabled):not(.disabled):checked {
+  background-color: hsla(var(--warning_color_hsl), 0.3);
+}
+
+.warning:not(:disabled):not(.disabled):checked:active {
+  background-color: hsla(var(--warning_color_hsl), 0.4);
+}
+
+.warning:not(:disabled):not(.disabled):checked:hover {
+  background-color: hsla(var(--warning_color_hsl), 0.5);
+}
+
+.error {
+  color: var(--error_color);
+  background-color: hsla(var(--error_color_hsl), 0.1);
+}
+
+.error-fg {
+  color: var(--error_color);
+}
+
+.error-bg {
+  background-color: hsla(var(--error_color_hsl), 0.1);
+}
+
+.error:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--error_color_hsl), 0.15);
+}
+
+.error:not(:disabled):not(.disabled):active {
+  background-color: hsla(var(--error_color_hsl), 0.3);
+}
+
+.error:not(:disabled):not(.disabled):checked {
+  background-color: hsla(var(--error_color_hsl), 0.3);
+}
+
+.error:not(:disabled):not(.disabled):checked:active {
+  background-color: hsla(var(--error_color_hsl), 0.4);
+}
+
+.error:not(:disabled):not(.disabled):checked:hover {
+  background-color: hsla(var(--error_color_hsl), 0.5);
+}
+
+button,
+.button {
+  display: inline-block;
+  box-shadow: none;
+  border: 1px solid transparent;
+  min-height: 24px;
+  min-width: 16px;
+  padding: 4px 10px 5px 10px;
+  border-radius: 6px;
+  color: var(--window_fg_color);
+  background-color: hsla(var(--window_fg_color_hsl), 0.1);
+  font-weight: bold;
+  text-align: center;
+  outline: 0 solid transparent;
+  outline-offset: 4px;
+  transition: outline-color 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94), outline-width 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94), outline-offset 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94), background-color 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+button:focus,
+.button:focus {
+  outline-color: hsla(var(--accent_color_hsl), 0.5);
+  outline-style: solid;
+  outline-width: 2px;
+  outline-offset: 1px;
+}
+
+button:not(:disabled):not(.disabled),
+.button:not(:disabled):not(.disabled) {
+  cursor: pointer;
+}
+
+button:disabled,
+button.disabled,
+.button:disabled,
+.button.disabled {
+  cursor: default;
+  filter: opacity(0.5);
+}
+
+button:not(:disabled):not(.disabled):hover,
+.button:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--window_fg_color_hsl), 0.15);
+}
+
+button:not(:disabled):not(.disabled):active,
+.button:not(:disabled):not(.disabled):active {
+  background-color: hsla(var(--window_fg_color_hsl), 0.3);
+}
+
+button:not(:disabled):not(.disabled):checked,
+.button:not(:disabled):not(.disabled):checked {
+  background-color: hsla(var(--window_fg_color_hsl), 0.3);
+}
+
+button:not(:disabled):not(.disabled):checked:active,
+.button:not(:disabled):not(.disabled):checked:active {
+  background-color: hsla(var(--window_fg_color_hsl), 0.4);
+}
+
+button:not(:disabled):not(.disabled):checked:hover,
+.button:not(:disabled):not(.disabled):checked:hover {
+  background-color: hsla(var(--window_fg_color_hsl), 0.5);
+}
+
+button.accent,
+.button.accent {
+  color: var(--accent_color);
+  background-color: hsla(var(--accent_color_hsl), 0.1);
+}
+
+button.accent:focus,
+.button.accent:focus {
+  outline-color: hsla(var(--accent_color_hsl), 0.5);
+}
+
+button.success,
+.button.success {
+  color: var(--success_color);
+  background-color: hsla(var(--success_color_hsl), 0.1);
+}
+
+button.success:focus,
+.button.success:focus {
+  outline-color: hsla(var(--success_color_hsl), 0.5);
+}
+
+button.warning,
+.button.warning {
+  color: var(--warning_color);
+  background-color: hsla(var(--warning_color_hsl), 0.1);
+}
+
+button.warning:focus,
+.button.warning:focus {
+  outline-color: hsla(var(--warning_color_hsl), 0.5);
+}
+
+button.error,
+.button.error {
+  color: var(--error_color);
+  background-color: hsla(var(--error_color_hsl), 0.1);
+}
+
+button.error:focus,
+.button.error:focus {
+  outline-color: hsla(var(--error_color_hsl), 0.5);
+}
+
+button.image-button,
+.button.image-button {
+  min-width: 24px;
+  padding-left: 5px;
+  padding-right: 5px;
+  font-size: 90%;
+}
+
+button.text-button,
+.button.text-button {
+  padding-left: 17px;
+  padding-right: 17px;
+}
+
+button.text-image-button,
+button.image-text-button,
+.button.text-image-button,
+.button.image-text-button {
+  padding-left: 9px;
+  padding-right: 9px;
+}
+
+button.arrow-button,
+.button.arrow-button {
+  padding-left: 9px;
+  padding-right: 9px;
+}
+
+button.circular,
+.button.circular {
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 9999px;
+}
+
+button.flat,
+.button.flat {
+  background: transparent;
+  box-shadow: none;
+  outline-offset: 4px;
+}
+
+button.flat:disabled,
+button.flat.disabled,
+.button.flat:disabled,
+.button.flat.disabled {
+  filter: opacity(0.3);
+}
+
+button.flat:not(:disabled):not(.disabled):focus,
+.button.flat:not(:disabled):not(.disabled):focus {
+  outline-color: hsla(var(--window_fg_color_hsl), 0.5);
+  outline-offset: -2px;
+}
+
+button.flat:not(:disabled):not(.disabled):hover,
+.button.flat:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--window_fg_color_hsl), 0.07);
+}
+
+button.flat:not(:disabled):not(.disabled):active,
+.button.flat:not(:disabled):not(.disabled):active {
+  background-color: hsla(var(--window_fg_color_hsl), 0.16);
+}
+
+button.flat:not(:disabled):not(.disabled):checked,
+.button.flat:not(:disabled):not(.disabled):checked {
+  background-color: hsla(var(--window_fg_color_hsl), 0.1);
+}
+
+button.flat:not(:disabled):not(.disabled):checked:hover,
+.button.flat:not(:disabled):not(.disabled):checked:hover {
+  background-color: hsla(var(--window_fg_color_hsl), 0.13);
+}
+
+button.flat:not(:disabled):not(.disabled):checked:active,
+.button.flat:not(:disabled):not(.disabled):checked:active {
+  background-color: hsla(var(--window_fg_color_hsl), 0.19);
+}
+
+button.flat.accent:not(:disabled):not(.disabled):focus,
+.button.flat.accent:not(:disabled):not(.disabled):focus {
+  outline-color: hsla(var(--accent_color_hsl), 0.5);
+  outline-offset: -2px;
+}
+
+button.flat.accent:not(:disabled):not(.disabled):hover,
+.button.flat.accent:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--accent_color_hsl), 0.07);
+}
+
+button.flat.accent:not(:disabled):not(.disabled):active,
+.button.flat.accent:not(:disabled):not(.disabled):active {
+  background-color: hsla(var(--accent_color_hsl), 0.16);
+}
+
+button.flat.accent:not(:disabled):not(.disabled):checked,
+.button.flat.accent:not(:disabled):not(.disabled):checked {
+  background-color: hsla(var(--accent_color_hsl), 0.1);
+}
+
+button.flat.accent:not(:disabled):not(.disabled):checked:hover,
+.button.flat.accent:not(:disabled):not(.disabled):checked:hover {
+  background-color: hsla(var(--accent_color_hsl), 0.13);
+}
+
+button.flat.accent:not(:disabled):not(.disabled):checked:active,
+.button.flat.accent:not(:disabled):not(.disabled):checked:active {
+  background-color: hsla(var(--accent_color_hsl), 0.19);
+}
+
+button.flat.success:not(:disabled):not(.disabled):focus,
+.button.flat.success:not(:disabled):not(.disabled):focus {
+  outline-color: hsla(var(--success_color_hsl), 0.5);
+  outline-offset: -2px;
+}
+
+button.flat.success:not(:disabled):not(.disabled):hover,
+.button.flat.success:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--success_color_hsl), 0.07);
+}
+
+button.flat.success:not(:disabled):not(.disabled):active,
+.button.flat.success:not(:disabled):not(.disabled):active {
+  background-color: hsla(var(--success_color_hsl), 0.16);
+}
+
+button.flat.success:not(:disabled):not(.disabled):checked,
+.button.flat.success:not(:disabled):not(.disabled):checked {
+  background-color: hsla(var(--success_color_hsl), 0.1);
+}
+
+button.flat.success:not(:disabled):not(.disabled):checked:hover,
+.button.flat.success:not(:disabled):not(.disabled):checked:hover {
+  background-color: hsla(var(--success_color_hsl), 0.13);
+}
+
+button.flat.success:not(:disabled):not(.disabled):checked:active,
+.button.flat.success:not(:disabled):not(.disabled):checked:active {
+  background-color: hsla(var(--success_color_hsl), 0.19);
+}
+
+button.flat.warning:not(:disabled):not(.disabled):focus,
+.button.flat.warning:not(:disabled):not(.disabled):focus {
+  outline-color: hsla(var(--warning_color_hsl), 0.5);
+  outline-offset: -2px;
+}
+
+button.flat.warning:not(:disabled):not(.disabled):hover,
+.button.flat.warning:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--warning_color_hsl), 0.07);
+}
+
+button.flat.warning:not(:disabled):not(.disabled):active,
+.button.flat.warning:not(:disabled):not(.disabled):active {
+  background-color: hsla(var(--warning_color_hsl), 0.16);
+}
+
+button.flat.warning:not(:disabled):not(.disabled):checked,
+.button.flat.warning:not(:disabled):not(.disabled):checked {
+  background-color: hsla(var(--warning_color_hsl), 0.1);
+}
+
+button.flat.warning:not(:disabled):not(.disabled):checked:hover,
+.button.flat.warning:not(:disabled):not(.disabled):checked:hover {
+  background-color: hsla(var(--warning_color_hsl), 0.13);
+}
+
+button.flat.warning:not(:disabled):not(.disabled):checked:active,
+.button.flat.warning:not(:disabled):not(.disabled):checked:active {
+  background-color: hsla(var(--warning_color_hsl), 0.19);
+}
+
+button.flat.error:not(:disabled):not(.disabled):focus,
+.button.flat.error:not(:disabled):not(.disabled):focus {
+  outline-color: hsla(var(--error_color_hsl), 0.5);
+  outline-offset: -2px;
+}
+
+button.flat.error:not(:disabled):not(.disabled):hover,
+.button.flat.error:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--error_color_hsl), 0.07);
+}
+
+button.flat.error:not(:disabled):not(.disabled):active,
+.button.flat.error:not(:disabled):not(.disabled):active {
+  background-color: hsla(var(--error_color_hsl), 0.16);
+}
+
+button.flat.error:not(:disabled):not(.disabled):checked,
+.button.flat.error:not(:disabled):not(.disabled):checked {
+  background-color: hsla(var(--error_color_hsl), 0.1);
+}
+
+button.flat.error:not(:disabled):not(.disabled):checked:hover,
+.button.flat.error:not(:disabled):not(.disabled):checked:hover {
+  background-color: hsla(var(--error_color_hsl), 0.13);
+}
+
+button.flat.error:not(:disabled):not(.disabled):checked:active,
+.button.flat.error:not(:disabled):not(.disabled):checked:active {
+  background-color: hsla(var(--error_color_hsl), 0.19);
+}
+
+button.opaque,
+.button.opaque {
+  color: var(--accent_fg_color);
+  background-color: var(--button_bg_color);
+}
+
+button.opaque:not(:disabled):not(.disabled):hover,
+.button.opaque:not(:disabled):not(.disabled):hover {
+  background-color: color-mix(in srgb, var(--window_bg_color) 20%, var(--button_bg_color));
+}
+
+button.accent.opaque,
+.button.accent.opaque {
+  background-color: var(--accent_bg_color);
+}
+
+button.accent.opaque:not(:disabled):not(.disabled):hover,
+.button.accent.opaque:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--accent_bg_color_hsl), 0.8);
+}
+
+button.success.opaque,
+.button.success.opaque {
+  background-color: var(--success_bg_color);
+}
+
+button.success.opaque:not(:disabled):not(.disabled):hover,
+.button.success.opaque:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--success_bg_color_hsl), 0.8);
+}
+
+button.warning.opaque,
+.button.warning.opaque {
+  background-color: var(--warning_bg_color);
+}
+
+button.warning.opaque:not(:disabled):not(.disabled):hover,
+.button.warning.opaque:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--warning_bg_color_hsl), 0.8);
+}
+
+button.error.opaque,
+.button.error.opaque {
+  background-color: var(--error_bg_color);
+}
+
+button.error.opaque:not(:disabled):not(.disabled):hover,
+.button.error.opaque:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--error_bg_color_hsl), 0.8);
+}
+
+button.suggested-action,
+.button.suggested-action {
+  color: var(--suggested_fg_color);
+}
+
+button.suggested-action,
+button.suggested-action:checked,
+.button.suggested-action,
+.button.suggested-action:checked {
+  background-color: var(--suggested_bg_color);
+}
+
+button.suggested-action:not(:disabled):not(.disabled):hover,
+.button.suggested-action:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--suggested_bg_color_hsl), 0.8);
+}
+
+button.suggested-action,
+button.opaque,
+.button.suggested-action,
+.button.opaque {
+  box-shadow: none;
+}
+
+button.suggested-action:focus,
+.button.suggested-action:focus {
+  outline-color: hsla(var(--suggested_color_hsl), 0.5);
+}
+
+button.suggested-action:active,
+button.opaque:active,
+.button.suggested-action:active,
+.button.opaque:active {
+  background-image: image(rgba(0, 0, 0, 0.2));
+}
+
+button.suggested-action:checked,
+button.opaque:checked,
+.button.suggested-action:checked,
+.button.opaque:checked {
+  background-image: image(rgba(0, 0, 0, 0.15));
+}
+
+button.suggested-action:checked:hover,
+button.opaque:checked:hover,
+.button.suggested-action:checked:hover,
+.button.opaque:checked:hover {
+  background-image: image(rgba(0, 0, 0, 0.05));
+}
+
+button.suggested-action:checked:active,
+button.opaque:checked:active,
+.button.suggested-action:checked:active,
+.button.opaque:checked:active {
+  background-image: image(rgba(0, 0, 0, 0.3));
+}
+
+button.destructive-action,
+.button.destructive-action {
+  color: var(--destructive_fg_color);
+}
+
+button.destructive-action,
+button.destructive-action:checked,
+.button.destructive-action,
+.button.destructive-action:checked {
+  background-color: var(--destructive_bg_color);
+}
+
+button.destructive-action:not(:disabled):not(.disabled):hover,
+.button.destructive-action:not(:disabled):not(.disabled):hover {
+  background-color: hsla(var(--destructive_bg_color_hsl), 0.8);
+}
+
+button.destructive-action,
+button.opaque,
+.button.destructive-action,
+.button.opaque {
+  box-shadow: none;
+}
+
+button.destructive-action:focus,
+.button.destructive-action:focus {
+  outline-color: hsla(var(--destructive_color_hsl), 0.5);
+}
+
+button.destructive-action:active,
+button.opaque:active,
+.button.destructive-action:active,
+.button.opaque:active {
+  background-image: image(rgba(0, 0, 0, 0.2));
+}
+
+button.destructive-action:checked,
+button.opaque:checked,
+.button.destructive-action:checked,
+.button.opaque:checked {
+  background-image: image(rgba(0, 0, 0, 0.15));
+}
+
+button.destructive-action:checked:hover,
+button.opaque:checked:hover,
+.button.destructive-action:checked:hover,
+.button.opaque:checked:hover {
+  background-image: image(rgba(0, 0, 0, 0.05));
+}
+
+button.destructive-action:checked:active,
+button.opaque:checked:active,
+.button.destructive-action:checked:active,
+.button.opaque:checked:active {
+  background-image: image(rgba(0, 0, 0, 0.3));
+}
+
+.alert {
+  padding: 1em;
+  margin-bottom: 1em;
+  border-radius: 0.5em;
+}
+
+input[type=text],
+input[type=password] {
+  color: var(--window_fg_color);
+  background-color: var(--view_bg_color);
+  border-radius: 0.3em;
+  border: 1px solid hsla(var(--window_fg_color_hsl), 0.2);
+  padding: 0.5em;
+  outline: 0 solid transparent;
+  outline-offset: 1px;
+  transition: color var(--theme_change_transition_time) ease-in-out, background-color var(--theme_change_transition_time) ease-in-out, outline-color 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94), outline-width 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94), outline-offset 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+input[type=text]:focus,
+input[type=password]:focus {
+  outline-width: 2px;
+  outline-color: hsla(var(--window_fg_color_hsl), 0.2);
+}
+
+.frame-card {
+  background-color: var(--card_bg_color);
+  padding: 12px 16px 16px 16px;
+  border-radius: 16px;
+  box-shadow: 0px 0px 5px 0px rgba(0, 0, 0, 0.1882352941);
+  transition: background-color var(--theme_change_transition_time) ease-in-out;
+}/*# sourceMappingURL=web_adwaita.css.map */

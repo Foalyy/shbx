@@ -1,11 +1,12 @@
 use crate::{
     command::{
         Command, CommandName, CommandResult, Commands, ServerShutdown, StreamCommandResult, Task,
-        TaskFinished, TaskId, TaskKilled, Tasks,
+        TaskError, TaskFinished, TaskId, TaskKilled, TaskStarted, TaskStderr, TaskStdout,
+        TaskTimeout, Tasks, UnableToKillTask,
     },
     config::Config,
     db::{self, DB},
-    user::{AdminUser, NewUser, PlaintextPassword, UpdatedUser, User, UserRole},
+    user::{AdminUser, NewUser, UpdatedUser, User, UserRole},
     Error,
 };
 use base64::Engine;
@@ -31,7 +32,7 @@ use tokio_stream::StreamExt;
 use utoipa::ToSchema;
 
 /// Sessions expire and are deleted after this delay of inactivity (in seconds)
-const SESSION_TIMEOUT: u64 = 3600; // s
+const SESSION_TIMEOUT: u64 = 10 * 24 * 3600; // s
 
 /// Kinds of responses that the API can return to the caller
 #[derive(Responder, Debug)]
@@ -630,12 +631,12 @@ pub enum ResultCode {
 }
 
 /// Credentials sent by a user
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, FromForm)]
 pub struct LoginCredentials {
-    username: String,
-    password: String,
+    pub username: String,
+    pub password: String,
     #[serde(default)]
-    permanent: bool,
+    pub permanent: bool,
 }
 
 /// Specialized message sent after a successful login, containing the session key
@@ -795,60 +796,10 @@ impl SessionStore {
     }
 }
 
-/// Check the credentials provided by the user and return a new session key if valid
-#[post("/login", data = "<credentials>")]
-pub async fn route_login(
-    credentials: Json<LoginCredentials>,
-    commands: &State<RwLock<Commands>>,
-    config: &State<Config>,
-    session_store: &State<SessionStore>,
-    mut db_conn: Connection<DB>,
-) -> Response {
-    // Reload the commands config file if necessary
-    {
-        let mut commands = commands.write().await;
-        commands.try_reload(config).await;
+impl Default for SessionStore {
+    fn default() -> Self {
+        Self::new()
     }
-
-    // Try to find the user in the database
-    let db_user = {
-        let commands = commands.read().await;
-        db::get_user(&mut db_conn, &commands, &credentials.username).await
-    };
-    match db_user {
-        Ok(Some(user)) => {
-            // A user with the given username was found in the database, check its password
-            if let Some(hashed_password) = &user.hashed_password {
-                if PlaintextPassword::from(credentials.password.as_str()).verify(hashed_password) {
-                    let key = session_store.new_session(user, credentials.permanent).await;
-                    Response::login_successful(key)
-                } else {
-                    Response::login_failed()
-                }
-            } else {
-                eprintln!(
-                    "Warning : user \"{}\" doesn't have a password in the database",
-                    user.username
-                );
-                Response::login_failed()
-            }
-        }
-        Ok(None) => Response::login_failed(),
-        Err(error) => {
-            eprintln!("Error : unable to get a user from the database : {error}");
-            Response::login_failed()
-        }
-    }
-}
-
-/// Logout the current user
-#[post("/logout")]
-pub async fn route_logout(user: User, session_store: &State<SessionStore>) -> Response {
-    // Delete this session from the store and send a confirmation to the user
-    session_store
-        .delete(&user.session_key.unwrap_or_default())
-        .await;
-    Response::logout_successful()
 }
 
 /// List the commands available to the current user
@@ -1091,7 +1042,7 @@ pub async fn route_exec_command_stream_events<'a>(
                 let mut tasks = tasks.write().await;
                 tasks.create(command_name, user.username)
             };
-            yield Event::json(&StreamCommandResult::TaskId(task.id.to_string()));
+            yield Event::json(&StreamCommandResult::TaskStarted(TaskStarted { task_id: task.id.to_string() }));
 
             // Maximum duration that the process can take to execute
             let timeout_duration = Duration::from_millis(command.timeout_millis);
@@ -1116,17 +1067,22 @@ pub async fn route_exec_command_stream_events<'a>(
                                 // The child sent an event :
                                 match item {
                                     // - some output to stdout or stderr
-                                    Some(Item::Stdout(data)) => yield Event::json(&StreamCommandResult::Stdout(data)),
-                                    Some(Item::Stderr(data)) => yield Event::json(&StreamCommandResult::Stderr(data)),
+                                    Some(Item::Stdout(output)) => yield Event::json(&StreamCommandResult::Stdout(TaskStdout { task_id: task.id.to_string(), output} )),
+                                    Some(Item::Stderr(output)) => yield Event::json(&StreamCommandResult::Stderr(TaskStderr { task_id: task.id.to_string(), output} )),
 
                                     // - an exit status
                                     Some(Item::Done(Ok(status))) => yield Event::json(&StreamCommandResult::TaskFinished(
                                         TaskFinished {
+                                            task_id: task.id.to_string(),
                                             exit_code: status.code(),
                                             execution_time: start_time.elapsed().as_millis(),
                                         }
                                     )),
-                                    Some(Item::Done(Err(error))) => yield Event::json(&StreamCommandResult::Error(format!("{error}"))),
+                                    Some(Item::Done(Err(error))) => yield Event::json(&StreamCommandResult::Error(TaskError {
+                                        task_id: task.id.to_string(),
+                                        code: ResultCode::InternalServerError,
+                                        message: format!("{error}"),
+                                    })),
 
                                     // - (no more events available because the process finished)
                                     None => break,
@@ -1134,7 +1090,13 @@ pub async fn route_exec_command_stream_events<'a>(
                             }
                             () = &mut timeout => {
                                 // Timeout expired
-                                yield Event::json(&Response::command_timeout_response(timeout_duration, start_time.elapsed().as_millis()));
+                                yield Event::json(&StreamCommandResult::TaskTimeout(
+                                    TaskTimeout {
+                                        task_id: task.id.to_string(),
+                                        timeout: timeout_duration.as_millis(),
+                                        execution_time: start_time.elapsed().as_millis(),
+                                    }
+                                ));
                                 break;
                             }
                             _ = &mut task_kill_signal_recv => {
@@ -1143,20 +1105,23 @@ pub async fn route_exec_command_stream_events<'a>(
                                     match child.kill().await {
                                         Ok(()) => yield Event::json(&StreamCommandResult::TaskKilled(
                                             TaskKilled {
+                                                task_id: task.id.to_string(),
                                                 execution_time: start_time.elapsed().as_millis(),
                                             }
                                         )),
-                                        Err(error) => yield Event::json(&StreamCommandResult::UnableToKillTask(error.to_string())),
+                                        Err(error) => yield Event::json(&StreamCommandResult::UnableToKillTask(UnableToKillTask {
+                                            task_id: task.id.to_string(),
+                                            message: error.to_string()
+                                        })),
                                     }
                                 }
                                 break;
                             }
                             _ = &mut shutdown => {
-                                yield Event::json(&StreamCommandResult::ServerShutdown(
-                                    ServerShutdown {
-                                        execution_time: start_time.elapsed().as_millis(),
-                                    }
-                                ));
+                                yield Event::json(&StreamCommandResult::ServerShutdown(ServerShutdown {
+                                    task_id: task.id.to_string(),
+                                    execution_time: start_time.elapsed().as_millis(),
+                                }));
                                 break;
                             }
                         }
@@ -1167,7 +1132,11 @@ pub async fn route_exec_command_stream_events<'a>(
                 }
 
                 // Command failed, return the error
-                Err(error) => yield Event::json(&Response::command_failed_response(&error)),
+                Err(error) => yield Event::json(&StreamCommandResult::Error(TaskError {
+                    task_id: task.id.to_string(),
+                    code: ResultCode::InternalServerError,
+                    message: format!("{error}"),
+                })),
             }
 
             // The task is finished, delete it
@@ -1255,11 +1224,16 @@ pub async fn route_exec_command_stream_text<'a>(
                                     // - an exit status
                                     Some(Item::Done(Ok(status))) => yield format!("{}\n", json!(&StreamCommandResult::TaskFinished(
                                         TaskFinished {
+                                            task_id: task.id.to_string(),
                                             exit_code: status.code(),
                                             execution_time: start_time.elapsed().as_millis(),
                                         }
                                     ))),
-                                    Some(Item::Done(Err(error))) => yield format!("{}\n", json!(&StreamCommandResult::Error(format!("{error}")))),
+                                    Some(Item::Done(Err(error))) => yield format!("{}\n", json!(&StreamCommandResult::Error(TaskError {
+                                        task_id: task.id.to_string(),
+                                        code: ResultCode::InternalServerError,
+                                        message: format!("{error}"),
+                                    }))),
 
                                     // - (no more events available because the process finished)
                                     None => break,
@@ -1276,10 +1250,14 @@ pub async fn route_exec_command_stream_text<'a>(
                                     match child.kill().await {
                                         Ok(()) => yield format!("{}\n", json!(&StreamCommandResult::TaskKilled(
                                             TaskKilled {
+                                                task_id: task.id.to_string(),
                                                 execution_time: start_time.elapsed().as_millis(),
                                             }
                                         ))),
-                                        Err(error) => yield format!("{}\n", json!(&StreamCommandResult::UnableToKillTask(error.to_string()))),
+                                        Err(error) => yield format!("{}\n", json!(&StreamCommandResult::UnableToKillTask(UnableToKillTask {
+                                            task_id: task.id.to_string(),
+                                            message: error.to_string()
+                                        }))),
                                     }
                                 }
                                 break;
@@ -1287,6 +1265,7 @@ pub async fn route_exec_command_stream_text<'a>(
                             _ = &mut shutdown => {
                                 yield format!("{}\n", json!(&StreamCommandResult::ServerShutdown(
                                     ServerShutdown {
+                                        task_id: task.id.to_string(),
                                         execution_time: start_time.elapsed().as_millis(),
                                     }
                                 )));

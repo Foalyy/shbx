@@ -9,22 +9,33 @@ mod openapi_doc;
 mod user;
 mod utils;
 
-use api::SessionStore;
+use api::{Response, SessionStore};
 use command::{CommandConfigError, Commands, Tasks};
 use config::Config;
 use db::DB;
 use openapi_doc::ApiDoc;
 use rocket::fairing::AdHoc;
+use rocket::form::Form;
+use rocket::fs::FileServer;
+use rocket::http::{Cookie, CookieJar};
+use rocket::request::FlashMessage;
+use rocket::response::{Flash, Redirect};
 use rocket::serde::json::serde_json;
-use rocket_db_pools::{sqlx, Database};
+use rocket::State;
+use rocket_db_pools::{sqlx, Connection, Database};
+use rocket_dyn_templates::{context, Template};
 use std::io;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use thiserror::Error;
 use tokio::sync::RwLock;
+use user::PlaintextPassword;
 use utoipa::OpenApi;
 use utoipa_rapidoc::RapiDoc;
 use utoipa_swagger_ui::SwaggerUi;
+
+use crate::api::LoginCredentials;
+use crate::user::User;
 
 #[launch]
 async fn rocket() -> _ {
@@ -55,12 +66,10 @@ async fn rocket() -> _ {
 
     // Let's go to spaaace !
     rocket::custom(figment)
-        .mount("/", routes![])
+        .mount("/", routes![index, route_login, route_logout])
         .mount(
             "/api/",
             routes![
-                api::route_login,
-                api::route_logout,
                 api::route_commands_list,
                 api::route_exec_command,
                 api::route_exec_command_stream_events,
@@ -86,6 +95,7 @@ async fn rocket() -> _ {
                 api::catcher_internal_server_error,
             ],
         )
+        .mount("/static", FileServer::from("static/").rank(0))
         .mount(
             "/",
             SwaggerUi::new("/api/doc/<_..>").url("/api-docs/openapi.json", ApiDoc::openapi()),
@@ -103,12 +113,86 @@ async fn rocket() -> _ {
         .manage(SessionStore::new())
         .manage(RwLock::new(Tasks::new()))
         .manage(config)
+        .attach(Template::fairing())
         .attach(AdHoc::on_liftoff("Startup message", move |_| {
             Box::pin(async move {
                 println!("ShellBox started on {address}:{port}");
                 println!("API documentation available on /api/doc and /api/rapidoc");
             })
         }))
+}
+
+/// Web UI : return the main template
+#[get("/")]
+fn index(flash: Option<FlashMessage<'_>>) -> Template {
+    Template::render(
+        "main",
+        context! {
+            flash: flash,
+            login_url: format!("{}", uri!(route_login())),
+            logout_url: format!("{}", uri!(route_logout())),
+        },
+    )
+}
+
+/// Check the credentials provided by the user and, if valid, set a
+/// new session key in the private cookies
+#[post("/login", data = "<credentials>")]
+pub async fn route_login(
+    credentials: Form<LoginCredentials>,
+    commands: &State<RwLock<Commands>>,
+    session_store: &State<SessionStore>,
+    cookies: &CookieJar<'_>,
+    mut db_conn: Connection<DB>,
+) -> Flash<Redirect> {
+    let redirect = Redirect::to(uri!(index()));
+
+    // Try to find the user in the database
+    let db_user = {
+        let commands = commands.read().await;
+        db::get_user(&mut db_conn, &commands, &credentials.username).await
+    };
+    match db_user {
+        Ok(Some(user)) => {
+            // A user with the given username was found in the database, check the password
+            if let Some(hashed_password) = &user.hashed_password {
+                if PlaintextPassword::from(credentials.password.as_str()).verify(hashed_password) {
+                    // The given password is valid : create the session and add it to the client' cookies
+                    let key = session_store.new_session(user, credentials.permanent).await;
+                    cookies.add_private(Cookie::new("api_key", key.to_string()));
+                    Flash::success(redirect, format!("Welcome {}", credentials.username))
+                } else {
+                    Flash::error(redirect, "Invalid credentials")
+                }
+            } else {
+                eprintln!(
+                    "Warning : user \"{}\" doesn't have a password in the database",
+                    user.username
+                );
+                Flash::error(redirect, "Invalid credentials")
+            }
+        }
+        Ok(None) => Flash::error(redirect, "Invalid credentials"),
+        Err(error) => {
+            eprintln!("Error : unable to get a user from the database : {error}");
+            Flash::error(redirect, "Invalid credentials")
+        }
+    }
+}
+
+/// Logout the current user
+#[post("/logout")]
+pub async fn route_logout(
+    user: User,
+    session_store: &State<SessionStore>,
+    cookies: &CookieJar<'_>,
+) -> Response {
+    // Delete this session from the store, delete the cookie, and send a confirmation to the user
+    session_store
+        .delete(&user.session_key.unwrap_or_default())
+        .await;
+    cookies.remove_private(Cookie::named("api_key"));
+    Response::logout_successful()
 }
 
 /// General type used to standardize errors across the crate

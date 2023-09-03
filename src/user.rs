@@ -10,7 +10,7 @@ use argon2::{
 };
 use rand::seq::SliceRandom;
 use rocket::{
-    http::Status,
+    http::{CookieJar, Status},
     request::{self, FromRequest},
     Request, State,
 };
@@ -48,24 +48,46 @@ impl User {
 }
 
 /// Make [User] a request guard so that the current user can be directly recovered by the routes
-/// based on the 'X-API-Key' header in the request
+/// based on the 'X-API-Key' header in the request or the cookies sent by the client
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for User {
     type Error = UserRequestGuardError;
 
     async fn from_request(request: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
-        // Try to read the key from the headers of the request
+        // Try to read the key from the 'X-API-Key' header of the request
         let key = match request.headers().get_one("X-API-Key") {
-            Some(key) => key,
+            Some(key) => key.to_string(),
             None => {
-                // Header 'X-API-Key' not found : return Access Unauthorized
-                return request::Outcome::Failure((
-                    Status::Unauthorized,
-                    Self::Error::AccessUnauthorized,
-                ));
+                // Header not found : try to find the key in the cookies
+
+                // Get access to the cookies jar
+                let cookies = match request.guard::<&CookieJar<'_>>().await {
+                    request::Outcome::Success(cookies) => cookies,
+                    _ => {
+                        // Cannot access the cookies jar. Something went wrong, this shouldn't happen.
+                        return request::Outcome::Failure((
+                            Status::InternalServerError,
+                            Self::Error::InternalServerError(
+                                "Error : unable to access the cookies storage".to_string(),
+                            ),
+                        ));
+                    }
+                };
+
+                // Try to find the cookie
+                match cookies.get_private("api_key") {
+                    Some(cookie) => cookie.value().to_string(),
+                    None => {
+                        // Cookie not found either, return a 401 Unauthorized
+                        return request::Outcome::Failure((
+                            Status::Unauthorized,
+                            Self::Error::AccessUnauthorized,
+                        ));
+                    }
+                }
             }
         };
-        let api_key = key.into();
+        let api_key = key.as_str().into();
 
         // Get access to the session store
         let session_store = match request.guard::<&State<SessionStore>>().await {
