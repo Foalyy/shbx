@@ -10,7 +10,7 @@ mod user;
 mod utils;
 
 use api::{Response, SessionStore};
-use command::{CommandConfigError, Commands, Tasks};
+use command::{CommandConfigError, Commands, Tasks, TasksList};
 use config::Config;
 use db::DB;
 use openapi_doc::ApiDoc;
@@ -21,6 +21,7 @@ use rocket::http::{Cookie, CookieJar};
 use rocket::request::FlashMessage;
 use rocket::response::{Flash, Redirect};
 use rocket::serde::json::serde_json;
+use rocket::tokio::sync::broadcast::channel;
 use rocket::State;
 use rocket_db_pools::{sqlx, Connection, Database};
 use rocket_dyn_templates::{context, Template};
@@ -64,6 +65,9 @@ async fn rocket() -> _ {
         .merge(("port", config.port))
         .merge(("databases.shbx.url", &config.database_path));
 
+    // Create a channel to broadcast updates of the tasks list
+    let tasks_channel = channel::<TasksList>(1).0;
+
     // Let's go to spaaace !
     rocket::custom(figment)
         .mount("/", routes![index, route_login, route_logout])
@@ -75,6 +79,7 @@ async fn rocket() -> _ {
                 api::route_exec_command_stream_events,
                 api::route_exec_command_stream_text,
                 api::route_tasks_list,
+                api::route_tasks_list_stream,
                 api::route_task_kill,
                 api::route_users_list_all,
                 api::route_user_create,
@@ -111,7 +116,8 @@ async fn rocket() -> _ {
         ))
         .manage(RwLock::new(Commands::read_or_exit(&config).await))
         .manage(SessionStore::new())
-        .manage(RwLock::new(Tasks::new()))
+        .manage(RwLock::new(Tasks::new(tasks_channel.clone())))
+        .manage(tasks_channel)
         .manage(config)
         .attach(Template::fairing())
         .attach(AdHoc::on_liftoff("Startup message", move |_| {

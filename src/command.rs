@@ -5,7 +5,7 @@ use crate::{
     utils, Error,
 };
 use is_executable::IsExecutable;
-use rocket::{futures::channel::oneshot, tokio::fs};
+use rocket::{futures::channel::oneshot, tokio::fs, tokio::sync::broadcast::Sender};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap, fmt::Display, ops::Deref, path::PathBuf, process::Stdio, time::SystemTime,
@@ -561,21 +561,25 @@ impl Serialize for TaskId {
     }
 }
 
+pub type TasksList = HashMap<TaskId, Task>;
+
 /// All the currently running [Task]s
 #[derive(Debug)]
 pub struct Tasks {
-    tasks: HashMap<TaskId, Task>,
+    tasks: TasksList,
     tasks_ids_by_name: HashMap<CommandName, Vec<TaskId>>,
     kill_signal_senders: HashMap<TaskId, oneshot::Sender<()>>,
+    tasks_channel: Sender<TasksList>,
 }
 
 impl Tasks {
     /// Create a new [Tasks] container
-    pub fn new() -> Self {
+    pub fn new(tasks_channel: Sender<TasksList>) -> Self {
         Self {
             tasks: HashMap::new(),
             tasks_ids_by_name: HashMap::new(),
             kill_signal_senders: HashMap::new(),
+            tasks_channel,
         }
     }
 
@@ -585,6 +589,10 @@ impl Tasks {
         self.tasks
             .iter()
             .filter_map(|(_, task)| task.if_visible_to(user))
+    }
+
+    pub fn list(&self) -> &TasksList {
+        &self.tasks
     }
 
     /// Create a new task inside this container and return it
@@ -602,6 +610,7 @@ impl Tasks {
         let (kill_signal_send, kill_signal_recv) = oneshot::channel::<()>();
         self.kill_signal_senders
             .insert(task.id.clone(), kill_signal_send);
+        self.tasks_channel.send(self.tasks.clone()).ok();
         (task, kill_signal_recv)
     }
 
@@ -612,6 +621,13 @@ impl Tasks {
 
     /// Remove the given task from the container
     pub fn remove(&mut self, id: &TaskId) -> Option<Task> {
+        let result = self.remove_internal(id);
+        self.tasks_channel.send(self.tasks.clone()).ok();
+        result
+    }
+
+    /// Remove the given task from the container without sending updates
+    fn remove_internal(&mut self, id: &TaskId) -> Option<Task> {
         let deleted_task = self.tasks.remove(id);
         if let Some(deleted_task) = &deleted_task {
             if let Some(ids) = self.tasks_ids_by_name.get_mut(&deleted_task.name) {
@@ -641,7 +657,7 @@ impl Tasks {
     }
 
     /// Look for dead tasks and remove them
-    pub fn cleanup(&mut self) {
+    pub fn cleanup(&mut self) -> bool {
         // When a client closes a connection to a stream endpoint, the responder is dropped by the runtime.
         // This drops the task (therefore kills the process) and the kill signal channel, without calling
         // [remove]. In this case, we need to manually look for canceled channels and remove the corresponding
@@ -652,15 +668,14 @@ impl Tasks {
             .filter(|(_, channel)| channel.is_canceled())
             .map(|(task_id, _)| task_id.clone())
             .collect();
+        let updated = !tasks_to_remove.is_empty();
         for task_id in tasks_to_remove {
-            self.remove(&task_id);
+            self.remove_internal(&task_id);
         }
-    }
-}
-
-impl Default for Tasks {
-    fn default() -> Self {
-        Self::new()
+        if updated {
+            self.tasks_channel.send(self.tasks.clone()).ok();
+        }
+        updated
     }
 }
 

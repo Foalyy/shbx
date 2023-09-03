@@ -19,14 +19,14 @@ function setThemeLight() {
     $('body').removeClass('dark');
     $('.btn-toggle-theme .fa-moon').removeClass('hidden');
     $('.btn-toggle-theme .fa-sun').addClass('hidden');
-    Cookies.set('theme', 'light', { expires: 365 });
+    Cookies.set('theme', 'light', { expires: 365, sameSite: 'strict' });
 }
 
 function setThemeDark() {
     $('body').addClass('dark');
     $('.btn-toggle-theme .fa-moon').addClass('hidden');
     $('.btn-toggle-theme .fa-sun').removeClass('hidden');
-    Cookies.set('theme', 'dark', { expires: 365 });
+    Cookies.set('theme', 'dark', { expires: 365, sameSite: 'strict' });
 }
 
 function toggleTheme() {
@@ -60,9 +60,7 @@ function loadCommands() {
                     container.append(el);
                 }
                 $('.overlay-loading').addClass('hidden');
-                setTimeout(function () {
-                    loadTasks();
-                }, 100);
+                loadTasks();
             } else if (this.status == 401 || this.status == 403) {
                 $('.overlay-login').removeClass('hidden');
                 $('.overlay-loading').addClass('hidden');
@@ -74,57 +72,34 @@ function loadCommands() {
 }
 
 function loadTasks() {
-    let request = new XMLHttpRequest();
-    request.onreadystatechange = function () {
-        if (this.readyState == 4) {
-            if (this.status == 200) {
-                let tasks = JSON.parse(this.response);
-                let newTasksIds = [];
-                for (task of tasks) {
-                    newTasksIds.push(task.id);
-                }
-                newTasksIds.sort();
-                let update = false;
-                if (_tasksIds.length == newTasksIds.length) {
-                    for (let i = 0; i < _tasksIds.length; i++) {
-                        if (_tasksIds[i] != newTasksIds[i]) {
-                            update = true;
-                            break;
-                        }
-                    }
-                } else {
-                    update = true;
-                }
-                if (update) {
-                    for (commandName of _commandNames) {
-                        $('#' + commandName + ' .command-running-tasks').html('');
-                    }
-                    _tasksIds = [];
-                    _tasks = {};
-                    for (let task of tasks) {
-                        _tasksIds.push(task.id);
-                        _tasks[task.id] = task;
-                        let container = $('#' + task.name + ' .command-running-tasks');
-                        let el = $('<div class="running-task-box-container"><div class="running-task-box"><div><i class="fa-solid fa-gear fa-spin"></i></div> <div class="running-task-id"></div></div> <button class="kill flat error" title="kill"><i class="fa-solid fa-skull-crossbones"></i></button></div>');
-                        el.find('.running-task-id').text(task.id);
-                        if (_runningTasks[task.id]) {
-                            el.find('.running-task-box').addClass('accent-fg').addClass('running-task-open');
-                            el.find('.running-task-box')[0].onclick = function () {
-                                openTask(task.id);
-                            };
-                        }
-                        el.find('.kill')[0].onclick = function () {
-                            killTask(task.id);
-                        };
-                        container.append(el);
-                    }
-                }
-                _tasksIds.sort();
-            }
+    var source = new SSE('/api/tasks/stream');
+    source.addEventListener('message', function (e) {
+        var tasks = JSON.parse(e.data);
+        for (commandName of _commandNames) {
+            $('#' + commandName + ' .command-running-tasks').html('');
         }
-    };
-    request.open('GET', '/api/tasks', true);
-    request.send();
+        _tasksIds = [];
+        _tasks = {};
+        for (taskId in tasks) {
+            let task = tasks[taskId];
+            _tasksIds.push(task.id);
+            _tasks[task.id] = task;
+            let container = $('#' + task.name + ' .command-running-tasks');
+            let el = $('<div class="running-task-box-container"><div class="running-task-box"><div><i class="fa-solid fa-gear fa-spin"></i></div> <div class="running-task-id"></div></div> <button class="kill flat error" title="kill"><i class="fa-solid fa-skull-crossbones"></i></button></div>');
+            el.find('.running-task-id').text(task.id);
+            if (_runningTasks[task.id]) {
+                el.find('.running-task-box').addClass('accent-fg').addClass('running-task-open');
+                el.find('.running-task-box')[0].onclick = function () {
+                    openTask(task.id);
+                };
+            }
+            el.find('.kill')[0].onclick = function () {
+                killTask(task.id);
+            };
+            container.append(el);
+        }
+        _tasksIds.sort();
+    });
 }
 
 function openTask(taskId) {
@@ -193,7 +168,6 @@ function runCommand(commandName) {
             let taskId = message.task_id;
             if (message.event == 'task_started') {
                 _currentTaskId = taskId;
-                loadTasks();
             }
             if (_runningTasks[taskId] == undefined) {
                 _runningTasks[taskId] = {
@@ -211,13 +185,13 @@ function runCommand(commandName) {
 }
 
 function appendTaskMessage(message) {
-    let taskEndedCommon = function() {
+    let taskEndedCommon = function () {
         $('.task .command-run').removeClass('disabled');
         $('.task .command-run-container').removeClass('hidden');
         $('.task .task-kill-parent').addClass('hidden');
         $('.task .autoscroll-parent').addClass('hidden');
     };
-    let setTaskStatus = function(status) {
+    let setTaskStatus = function (status) {
         if (status == 'success' || status == 'error') {
             $('.task .task-id-box').addClass(status + '-fg');
             $('.task .task-running').addClass('hidden');
@@ -298,9 +272,6 @@ function killTask(taskId) {
     let request = new XMLHttpRequest();
     request.open('DELETE', '/api/tasks/' + taskId);
     request.send();
-    setTimeout(function () {
-        loadTasks();
-    }, 100);
 }
 
 function setAutoscroll(autoscroll) {

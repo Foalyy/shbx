@@ -18,6 +18,7 @@ use crate::{api, command, user};
         api::route_exec_command_stream_events,
         api::route_exec_command_stream_text,
         api::route_tasks_list,
+        api::route_tasks_list_stream,
         api::route_task_kill,
         api::route_users_list_all,
         api::route_user_create,

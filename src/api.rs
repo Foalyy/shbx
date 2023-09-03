@@ -2,7 +2,7 @@ use crate::{
     command::{
         Command, CommandName, CommandResult, Commands, ServerShutdown, StreamCommandResult, Task,
         TaskError, TaskFinished, TaskId, TaskKilled, TaskStarted, TaskStderr, TaskStdout,
-        TaskTimeout, Tasks, UnableToKillTask,
+        TaskTimeout, Tasks, TasksList, UnableToKillTask,
     },
     config::Config,
     db::{self, DB},
@@ -14,6 +14,9 @@ use rand::RngCore;
 use rocket::{
     response::stream::{Event, EventStream, TextStream},
     serde::json::{self, json, Json},
+    tokio::select,
+    tokio::sync::broadcast::error::RecvError,
+    tokio::sync::broadcast::Sender,
     tokio::sync::RwLock,
     Shutdown, State,
 };
@@ -1309,6 +1312,44 @@ pub async fn route_exec_command_stream_text<'a>(
 pub async fn route_tasks_list(user: User, tasks: &State<RwLock<Tasks>>) -> Response {
     let mut tasks = tasks.write().await;
     Response::Tasks(Json(tasks.visible_to(&user).cloned().collect()))
+}
+
+/// Get the list of tasks currently running as stream of type `text/event-stream`.
+#[utoipa::path(
+    get,
+    tag = "Tasks",
+    path = "/tasks/stream",
+    context_path = "/api",
+    security(("api_key" = [])),
+)]
+#[get("/tasks/stream")]
+pub async fn route_tasks_list_stream<'a>(
+    _user: User,
+    tasks: &'a State<RwLock<Tasks>>,
+    tasks_channel: &'a State<Sender<TasksList>>,
+    mut end: Shutdown,
+) -> EventStream![Event + 'a] {
+    let mut receiver = tasks_channel.subscribe();
+    EventStream! {
+        // Send the current list
+        {
+            let tasks = tasks.read().await;
+            yield Event::json(tasks.list());
+        }
+        
+        // Send updates to the client as soon as they are received from the channel
+        loop {
+            let tasks = select! {
+                tasks = receiver.recv() => match tasks {
+                    Ok(tasks) => tasks,
+                    Err(RecvError::Closed) => break,
+                    Err(RecvError::Lagged(_)) => continue,
+                },
+                _ = &mut end => break,
+            };
+            yield Event::json(&tasks);
+        }
+    }
 }
 
 /// Kill a currently-running task
