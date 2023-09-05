@@ -101,7 +101,8 @@
 .task-id-box,
 .command-name-box,
 .command-exec-box,
-.running-task-box {
+.running-task-box,
+.running-task-username-box {
     display: flex;
     gap: 0.3em;
     align-items: center;
@@ -157,6 +158,11 @@
 
 .running-task-open {
     cursor: pointer;
+}
+
+.running-task-username-box {
+    margin-left: 0.8em;
+    opacity: 0.8;
 }
 
 .command-run-box {
@@ -258,6 +264,10 @@
 .task .command-output .diag {
     padding: 0.2em 0;
     color: var(--light_1);
+}
+
+.task .command-output .diag.error-fg {
+    color: var(--red_1);
 }
 
 .task .command-output .stderr {

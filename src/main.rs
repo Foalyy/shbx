@@ -2,6 +2,7 @@
 extern crate rocket;
 
 mod api;
+mod api_response;
 mod command;
 mod config;
 mod db;
@@ -9,27 +10,30 @@ mod openapi_doc;
 mod user;
 mod utils;
 
-use api::{Response, SessionStore};
-use command::{CommandConfigError, Commands, Tasks, TasksList};
+use api::SessionStore;
+use api_response::Response;
+use command::{CommandConfigError, Commands, TaskId, Tasks, TasksList};
 use config::Config;
 use db::DB;
 use openapi_doc::ApiDoc;
-use rocket::fairing::AdHoc;
-use rocket::form::Form;
-use rocket::fs::FileServer;
-use rocket::http::{Cookie, CookieJar};
-use rocket::request::FlashMessage;
-use rocket::response::{Flash, Redirect};
-use rocket::serde::json::serde_json;
-use rocket::tokio::sync::broadcast::channel;
-use rocket::State;
+use rocket::{
+    fairing::AdHoc,
+    form::Form,
+    fs::FileServer,
+    http::{Cookie, CookieJar},
+    request::FlashMessage,
+    response::{Flash, Redirect},
+    serde::json::serde_json,
+    tokio::sync::{broadcast::channel, RwLock},
+    State,
+};
 use rocket_db_pools::{sqlx, Connection, Database};
 use rocket_dyn_templates::{context, Template};
 use std::io;
 use std::net::IpAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::RwLock;
 use user::PlaintextPassword;
 use utoipa::OpenApi;
 use utoipa_rapidoc::RapiDoc;
@@ -65,8 +69,15 @@ async fn rocket() -> _ {
         .merge(("port", config.port))
         .merge(("databases.shbx.url", &config.database_path));
 
-    // Create a channel to broadcast updates of the tasks list
-    let tasks_channel = channel::<TasksList>(1).0;
+    // Create a channel to broadcast updates of the tasks list. This will be managed in a
+    // Rocket State and can be subscribed to by async responders, mainly [route_tasks_list_stream].
+    let tasks_updates_channel = channel::<TasksList>(1).0;
+
+    // Create the global struct that manages the list of running tasks. This is wrapped in an Arc
+    // in order to give ownership of the struct to Rocket (in a managed State), while keeping a weak
+    // pointer on it for the monitoring async task that handles events coming from child processes.
+    let tasks = Arc::new(RwLock::new(Tasks::new(tasks_updates_channel.clone())));
+    Tasks::start_monitoring_task(Arc::downgrade(&tasks)).await;
 
     // Let's go to spaaace !
     rocket::custom(figment)
@@ -76,10 +87,12 @@ async fn rocket() -> _ {
             routes![
                 api::route_commands_list,
                 api::route_exec_command,
+                api::route_exec_command_async,
                 api::route_exec_command_stream_events,
                 api::route_exec_command_stream_text,
                 api::route_tasks_list,
                 api::route_tasks_list_stream,
+                api::route_task_connect,
                 api::route_task_kill,
                 api::route_users_list_all,
                 api::route_user_create,
@@ -116,8 +129,8 @@ async fn rocket() -> _ {
         ))
         .manage(RwLock::new(Commands::read_or_exit(&config).await))
         .manage(SessionStore::new())
-        .manage(RwLock::new(Tasks::new(tasks_channel.clone())))
-        .manage(tasks_channel)
+        .manage(tasks)
+        .manage(tasks_updates_channel)
         .manage(config)
         .attach(Template::fairing())
         .attach(AdHoc::on_liftoff("Startup message", move |_| {
@@ -242,6 +255,12 @@ pub enum Error {
 
     #[error("invalid user : \"{0}\"")]
     InvalidUser(String),
+
+    #[error("invalid task id : \"{0}\"")]
+    InvalidTaskId(TaskId),
+
+    #[error("error : : {0}")]
+    IoError(#[from] std::io::Error),
 
     #[error("other error : {0}")]
     OtherError(String),

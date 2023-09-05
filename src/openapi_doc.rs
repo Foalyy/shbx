@@ -3,7 +3,7 @@ use utoipa::{
     Modify, OpenApi,
 };
 
-use crate::{api, command, user};
+use crate::{api, api_response, command, user};
 
 /// Auto-generated OpenAPI documentation
 #[derive(OpenApi)]
@@ -15,10 +15,12 @@ use crate::{api, command, user};
     paths(
         api::route_commands_list,
         api::route_exec_command,
+        api::route_exec_command_async,
         api::route_exec_command_stream_events,
         api::route_exec_command_stream_text,
         api::route_tasks_list,
         api::route_tasks_list_stream,
+        api::route_task_connect,
         api::route_task_kill,
         api::route_users_list_all,
         api::route_user_create,
@@ -33,10 +35,11 @@ use crate::{api, command, user};
             command::CommandResult,
             command::Task,
             command::TaskId,
-            api::MessageResponse,
-            api::MessageResponseWithOutput,
-            api::ResultCode,
-            api::ResultStatus,
+            api_response::MessageResponse,
+            api_response::MessageResponseWithOutput,
+            api_response::MessageResponseWithTaskId,
+            api_response::ResultCode,
+            api_response::ResultStatus,
             user::User,
             user::UserRole,
             user::NewUser,

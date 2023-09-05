@@ -55,10 +55,10 @@ mod tests {
         assert_eq!(split_line("   hello   world     "), vec!["hello", "world"]);
 
         // Escaped backslashes
-        assert_eq!(split_line(r#"\\hello\\world"#), vec![r#"\hello\world"#]);
+        assert_eq!(split_line(r"\\hello\\world"), vec![r"\hello\world"]);
 
         // Invalid escaped characters
-        assert_eq!(split_line(r#"\\ \a \b"#), vec!["\\", "a", "b"]);
+        assert_eq!(split_line(r"\\ \a \b"), vec!["\\", "a", "b"]);
 
         // Simple quoted substring
         assert_eq!(

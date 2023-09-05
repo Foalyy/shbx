@@ -92,7 +92,7 @@
         <div class="overlay-login hidden">
             <div class="login-logo"><i class="fa-solid fa-terminal"></i> ShellBox</div>
             <div class="frame-card frame-card-login">
-                {% if flash %}
+                {% if flash and flash.kind == 'error' %}
                     <div class="alert {{ flash.kind }}"><i class="fa-solid fa-circle-exclamation"></i> {{ flash.message }}</div>
                 {% endif %}
                 <form method="POST" action="{{ login_url | safe }}">
