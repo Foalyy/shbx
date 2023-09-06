@@ -28,6 +28,7 @@ use std::{
 use strum::{Display, FromRepr};
 use tokio_process_stream::{Item, ProcessLineStream};
 use tokio_stream::StreamExt;
+use unix_users::os::unix::UserExt;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -201,46 +202,27 @@ impl Command {
 
     /// Consume this [Command] and convert it into a [process::Command] ready to be executed.
     pub fn into_process(self, config: &Config) -> process::Command {
-        let use_sudo = self.user.is_some() || self.group.is_some();
-        let mut cmd = if !use_sudo {
-            // Without sudo
-            if !self.shell {
-                // Run the command directly
-                let mut cmd = process::Command::new(self.cmd.path);
-                cmd.args(self.cmd.args);
-                cmd
-            } else {
-                // Run the command in a shell
-                let mut cmd = process::Command::new(config.shell_parsed.0.clone());
-                cmd.args(config.shell_parsed.1.clone());
-                cmd.arg(self.exec);
-                cmd
-            }
+        let mut cmd = if !self.shell {
+            // Run the command directly
+            let mut cmd = process::Command::new(self.cmd.path);
+            cmd.args(self.cmd.args);
+            cmd
         } else {
-            // Run the command through sudo to change the user and/or group
-            let mut cmd = process::Command::new("sudo");
-            cmd.arg("-n"); // Non-interactive mode : return an error instead of asking a password
-            if let Some(user) = self.user {
-                cmd.arg("-u");
-                cmd.arg(user.name());
-            }
-            if let Some(group) = self.group {
-                cmd.arg("-g");
-                cmd.arg(group.name());
-            }
-
-            if !self.shell {
-                // Without shell
-                cmd.arg(self.cmd.path);
-                cmd.args(self.cmd.args);
-            } else {
-                // With a shell
-                cmd.arg(config.shell_parsed.0.clone());
-                cmd.args(config.shell_parsed.1.clone());
-                cmd.arg(self.exec);
-            }
+            // Run the command in a shell
+            let mut cmd = process::Command::new(config.shell_parsed.0.clone());
+            cmd.args(config.shell_parsed.1.clone());
+            cmd.arg(self.exec);
             cmd
         };
+        if let Some(user) = self.user {
+            cmd.uid(user.uid());
+            cmd.env("HOME", user.home_dir());
+            cmd.env("USER", user.name());
+            cmd.env("LOGNAME", user.name());
+        }
+        if let Some(group) = self.group {
+            cmd.gid(group.gid());
+        }
         cmd.current_dir(self.working_dir);
         cmd.stdin(Stdio::piped());
         cmd.stdout(Stdio::piped());
