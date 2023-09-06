@@ -4,7 +4,7 @@
 
 <div align="center"><img src="static/img/shbx.svg" width="400"></div>
 
-**ShellBox** / `shbx` is a simple API-based open-source service with a Web UI that simplify running commands and managing tasks on a remote server. Its main goal is to give some secure and restricted control over a server to other users or systems, without entrusting them with an SSH access.
+**ShellBox** / `shbx` is a simple API-based open-source service with a Web UI that simplifies running commands and managing tasks on a remote server. Its main goal is to give some secure and restricted control over a server to other users or systems, without entrusting them with an SSH access.
 
 
 ## TL;DR / summary
@@ -33,7 +33,7 @@
 ### Quick jump
 
 - [1/ Installation](#1-installation)
-    - [1.1/ (Option A) Install using a release](#11-option-a-install-using-a-release-recommended)
+    - [1.1/ (Option A) Install using a release](#11-option-a-install-using-a-release)
     - [1.1/ (Option B) Build from source](#11-option-b-build-from-source)
     - [1.2/ Start as a daemon](#12-start-as-a-daemon)
     - [1.3/ Set up the reverse proxy](#13-set-up-the-reverse-proxy)
@@ -41,8 +41,8 @@
 - [2/ Commands](#2-commands)
 - [3/ Main configuration file](#3-main-configuration-file)
 - [4/ API](#4-api)
-- [5/ Web UI](#4-web-ui)
-- [6/ Security](#4-security)
+- [5/ Web UI](#5-web-ui)
+- [6/ Security](#6-security)
 - [7/ Acknowledgements](#7-acknowledgements)
 
 
