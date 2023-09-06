@@ -8,7 +8,7 @@ use is_executable::IsExecutable;
 use rocket::{
     tokio::{
         fs, process,
-        sync::{broadcast, oneshot, RwLock},
+        sync::{broadcast, mpsc, oneshot, RwLock},
         task::JoinHandle,
         time,
     },
@@ -424,6 +424,7 @@ pub enum TaskEvent {
     TaskTimeout(TaskTimeout),
     TaskExited(TaskExited),
     KillSignalSent(KillSignalSent),
+    SignalSent(SignalSent),
     TaskKilled(TaskKilled),
     UnableToKillTask(UnableToKillTask),
     TaskTerminated(TaskTerminated),
@@ -458,6 +459,7 @@ impl ToString for TaskEvent {
                 }
             }
             TaskEvent::KillSignalSent(_) => "Kill signal sent".to_string(),
+            TaskEvent::SignalSent(event) => format!("Signal {} sent", event.signal),
             TaskEvent::TaskKilled(_) => "Task killed".to_string(),
             TaskEvent::UnableToKillTask(event) => {
                 format!("Error, unable to kill the task : {}", event.message)
@@ -508,6 +510,13 @@ pub struct TaskExited {
 #[derive(Serialize, Debug)]
 pub struct KillSignalSent {
     pub task_id: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct SignalSent {
+    pub task_id: String,
+    pub signal: i32,
+    pub signal_name: String,
 }
 
 #[derive(Serialize, Debug)]
@@ -638,6 +647,7 @@ pub struct TaskProcess {
     pub output: Arc<RwLock<Vec<TaskOutputMessage>>>,
     pub output_channel: broadcast::Sender<TaskOutputMessage>,
     kill_signal_channel: Option<oneshot::Sender<()>>,
+    signal_channel: Option<mpsc::Sender<UnixSignal>>,
     monitoring_channel: broadcast::Sender<TasksMonitoringMessage>,
 }
 
@@ -668,6 +678,7 @@ impl TaskProcess {
             output,
             output_channel: broadcast::channel::<TaskOutputMessage>(1024).0,
             kill_signal_channel: None,
+            signal_channel: None,
             monitoring_channel,
         }
     }
@@ -680,6 +691,11 @@ impl TaskProcess {
         // running task to kill the child process
         let (kill_signal_send, mut kill_signal_recv) = oneshot::channel::<()>();
         self.kill_signal_channel = Some(kill_signal_send);
+
+        // Create the generic signal channel, which will allow the system to send a request to the
+        // running task to send a Unix signal to the child process
+        let (signal_send, mut signal_recv) = mpsc::channel::<UnixSignal>(8);
+        self.signal_channel = Some(signal_send);
 
         // Create a copy of the pointer to the output struct to give to the async task
         let output = self.output.clone();
@@ -723,6 +739,7 @@ impl TaskProcess {
             append_message(TaskOutputMessage::TaskStarted, &output, &channel).await;
 
             let mut kill_signal_received = false;
+            let mut signal_channel_closed = false;
             loop {
                 // Await until any relevant event is received : an output from the process, a timeout,
                 // a kill signal or the server shutting down
@@ -759,6 +776,29 @@ impl TaskProcess {
                             }
                         }
                     }
+                    signal = signal_recv.recv(), if !signal_channel_closed => {
+                        // Received a message on the signals channel
+                        if let Some(signal) = signal {
+                            // Find the PID of the child process
+                            let Some(child) = cmd_stream.child() else {
+                                eprintln!("Error : unable to send a signal to task {task_id} : cannot get child process");
+                                continue;
+                            };
+                            let Some(pid) = child.id() else {
+                                eprintln!("Error : unable to send a signal to task {task_id} : the child process doesn't have a PID");
+                                continue;
+                            };
+
+                            // Send the signal using the raw libc kill function
+                            let signal_result = unsafe { libc::kill(pid as i32, signal as i32) };
+                            match signal_result {
+                                0 => append_message(TaskOutputMessage::SignalSent(signal), &output, &channel).await,
+                                ret => append_message(TaskOutputMessage::Error(format!("Unable to send a signal : libc kill returned {ret}")), &output, &channel).await,
+                            }
+                        } else {
+                            signal_channel_closed = true;
+                        }
+                    }
                     _ = &mut shutdown => {
                         // The server is shutting down, cleanly exit the process
                         append_message(TaskOutputMessage::ServerShutdown, &output, &channel).await;
@@ -792,6 +832,15 @@ impl TaskProcess {
             false
         }
     }
+
+    /// Send an arbitrary signal to the associated async task running the child process
+    pub async fn send_signal(&mut self, signal: UnixSignal) -> bool {
+        if let Some(signal_channel) = &self.signal_channel {
+            signal_channel.send(signal).await.is_ok()
+        } else {
+            false
+        }
+    }
 }
 
 /// Messages that can be passed through the channel from background async tasks running
@@ -803,6 +852,7 @@ pub enum TaskOutputMessage {
     Stderr(String),
     Timeout(u128),
     KillSignalSent,
+    SignalSent(UnixSignal),
     ExitCode(Option<i32>, Option<i32>),
     Error(String),
     ServerShutdown,
@@ -833,13 +883,18 @@ impl TaskOutputMessage {
             TaskOutputMessage::KillSignalSent => Some(TaskEvent::KillSignalSent(KillSignalSent {
                 task_id: task_id.to_string(),
             })),
+            TaskOutputMessage::SignalSent(signal) => Some(TaskEvent::SignalSent(SignalSent {
+                task_id: task_id.to_string(),
+                signal: signal as i32,
+                signal_name: signal.to_string(),
+            })),
             TaskOutputMessage::ExitCode(exit_code, signal) => {
                 Some(TaskEvent::TaskExited(TaskExited {
                     task_id: task_id.to_string(),
                     exit_code,
                     signal,
                     signal_name: signal
-                        .and_then(UnixSignals::from_repr)
+                        .and_then(UnixSignal::from_repr)
                         .map(|s| s.to_string()),
                 }))
             }
@@ -862,10 +917,10 @@ impl TaskOutputMessage {
 /// List of existing Unix signals with name and associated code, according
 /// to `man 7 signal`. This is used to give the human-readable signal name
 /// to clients along the signal code.
-#[derive(Debug, FromRepr, Display)]
+#[derive(Debug, Copy, Clone, FromRepr, Display)]
 #[repr(i32)]
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
-pub enum UnixSignals {
+pub enum UnixSignal {
     Sighup = 1,
     Sigint = 2,
     Sigquit = 3,
@@ -1057,6 +1112,25 @@ impl Tasks {
         {
             if let Some(task_process) = self.tasks_processes.get_mut(id) {
                 return Some(task_process.kill());
+            }
+        }
+        None
+    }
+
+    /// Send a signal to the given task as the given [User]
+    pub async fn send_signal(
+        &mut self,
+        id: &TaskId,
+        signal: UnixSignal,
+        user: &User,
+    ) -> Option<bool> {
+        if self
+            .tasks
+            .get(id)
+            .is_some_and(|task| task.is_visible_to(user))
+        {
+            if let Some(task_process) = self.tasks_processes.get_mut(id) {
+                return Some(task_process.send_signal(signal).await);
             }
         }
         None

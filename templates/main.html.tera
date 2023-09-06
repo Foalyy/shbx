@@ -22,9 +22,11 @@
     <body class="dark">
         <div class="main">
             <div class="main-logo"><i class="fa-solid fa-terminal"></i> ShellBox</div>
-            <div class="main-menu row">
-                <div class="col-auto"><a href="#" class="button flat btn-toggle-theme" onclick="event.preventDefault(); toggleTheme();"><i class="fa-solid fa-moon hidden"></i><i class="fa-solid fa-sun"></i></a></div>
-                <div class="col-auto"><a href="#" class="button flat" onclick="event.preventDefault(); logout();"><i class="fa-solid fa-right-from-bracket"></i></a></div>
+            <div class="main-menu container">
+                <div class="row">
+                    <div class="col-auto"><a href="#" class="button flat btn-toggle-theme" onclick="event.preventDefault(); toggleTheme();"><i class="fa-solid fa-moon hidden"></i><i class="fa-solid fa-sun"></i></a></div>
+                    <div class="col-auto"><a href="#" class="button flat" onclick="event.preventDefault(); logout();"><i class="fa-solid fa-right-from-bracket"></i></a></div>
+                </div>
             </div>
             <div class="command-template hidden">
                 <div class="row command-container">
@@ -71,6 +73,9 @@
                         </div>
                         <div class="col-auto autoscroll-parent hidden">
                             <button class="image-button autoscroll flat" title="Autoscroll"><i class="fa-solid fa-angles-down"></i></button>
+                        </div>
+                        <div class="col-auto task-terminate-parent hidden">
+                            <button class="text-image-button suggested-action task-terminate" title="Stop this task"><i class="fa-solid fa-circle-stop"></i> Stop</button>
                         </div>
                         <div class="col-auto task-kill-parent hidden">
                             <button class="text-image-button destructive-action task-kill" title="Kill this task"><i class="fa-solid fa-skull-crossbones"></i> Kill</button>

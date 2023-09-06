@@ -2,7 +2,7 @@ use crate::{
     api_response::Response,
     command::{
         Command, CommandName, CommandResult, Commands, Task, TaskId, TaskOutputMessage, Tasks,
-        TasksList, UnixSignals,
+        TasksList, UnixSignal,
     },
     config::Config,
     db::{self, DB},
@@ -329,11 +329,12 @@ pub async fn route_exec_command(
                             );
                         }
                         TaskOutputMessage::KillSignalSent => {}
+                        TaskOutputMessage::SignalSent(_) => {}
                         TaskOutputMessage::ExitCode(received_exit_code, received_signal) => {
                             exit_code = received_exit_code;
                             signal = received_signal;
                             signal_name = received_signal
-                                .and_then(UnixSignals::from_repr)
+                                .and_then(UnixSignal::from_repr)
                                 .map(|s| s.to_string());
                         }
                         TaskOutputMessage::Error(error) => {
@@ -814,6 +815,56 @@ pub async fn route_task_connect(
         } else {
             yield Event::json(&Response::invalid_task_id_response(task_id));
         }
+    }
+}
+
+/// Send a signal to a currently-running task
+#[utoipa::path(
+    post,
+    tag = "Tasks",
+    path = "/tasks/{task_id}/signal/{signal}",
+    context_path = "/api",
+    params(
+        ("task_id", description = "The id of the task to send the signal to", example="f99b9779-7a03-4be0-aee9-1de93ea901b8"),
+        ("signal", description = "The signal to send", example="15"),
+    ),
+    responses(
+        (status = OK, description = "The signal was successfully sent to the task",
+            body = MessageResponse, example = json!(Response::signal_sent_response(&TaskId::from("f99b9779-7a03-4be0-aee9-1de93ea901b8").unwrap(), UnixSignal::Sigterm))),
+        (status = NOT_FOUND, description = "The provided task id is malformed or does not correspond to a task",
+            body = MessageResponse, example = json!(Response::invalid_task_id_response("16cf5376-b0ba-487a-8838-3c7e94ef4f1a".to_string()))),
+        (status = BAD_REQUEST, description = "The provided signal code is invalid",
+            body = MessageResponse, example = json!(Response::invalid_signal_response(68))),
+        (status = INTERNAL_SERVER_ERROR, description = "The task could not be killed due to an internal error",
+            body = MessageResponse, example = json!(Response::unable_to_send_signal_response(&TaskId::from("f99b9779-7a03-4be0-aee9-1de93ea901b8").unwrap(), UnixSignal::Sigterm))),
+    ),
+    security(("api_key" = [])),
+)]
+#[post("/tasks/<task_id>/signal/<signal>")]
+pub async fn route_task_send_signal(
+    user: User,
+    tasks: &State<Arc<RwLock<Tasks>>>,
+    task_id: String,
+    signal: i32,
+) -> Response {
+    if let Some(task_id) = TaskId::from(&task_id) {
+        // Check the provided signal code and convert it to a [UnixSignal]
+        let Some(signal) = UnixSignal::from_repr(signal) else {
+            return Response::invalid_signal(signal);
+        };
+
+        // Send the signal
+        let signal_result = {
+            let mut tasks = tasks.write().await;
+            tasks.send_signal(&task_id, signal, &user).await
+        };
+        match signal_result {
+            Some(true) => Response::signal_sent(&task_id, signal),
+            Some(false) => Response::unable_to_send_signal(&task_id, signal),
+            None => Response::invalid_task_id(task_id.to_string()),
+        }
+    } else {
+        Response::invalid_task_id(task_id)
     }
 }
 

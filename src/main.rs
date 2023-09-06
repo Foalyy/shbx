@@ -94,6 +94,7 @@ async fn rocket() -> _ {
                 api::route_tasks_list_stream,
                 api::route_task_connect,
                 api::route_task_kill,
+                api::route_task_send_signal,
                 api::route_users_list_all,
                 api::route_user_create,
                 api::route_user_get,

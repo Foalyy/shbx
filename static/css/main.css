@@ -60,8 +60,11 @@
 }
 
 .main-menu {
-    justify-content: center;
     opacity: 0.7;
+}
+
+.main-menu .row {
+    justify-content: center;
 }
 
 .commands {
@@ -229,6 +232,7 @@
 
 .task-close-parent,
 .autoscroll-parent,
+.task-terminate-parent,
 .task-kill-parent {
     padding-left: 0;
 }

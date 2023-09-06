@@ -1,3 +1,5 @@
+const SIGTERM = 15;
+
 let _commandNames = [];
 let _commands = {};
 let _tasksIds = [];
@@ -90,11 +92,14 @@ function loadTasks() {
             _tasksIds.push(task.id);
             _tasks[task.id] = task;
             let container = $('#' + task.name + ' .command-running-tasks');
-            let el = $('<div class="running-task-box-container"><div class="running-task-box accent-fg running-task-open"><div><i class="fa-solid fa-gear fa-spin"></i></div> <div class="running-task-id"></div></div> <div class="running-task-username-box"><div><i class="fa-solid fa-user"></i></div> <div class="running-task-username"></div></div> <button class="kill flat error" title="kill"><i class="fa-solid fa-skull-crossbones"></i></button></div>');
+            let el = $('<div class="running-task-box-container"><div class="running-task-box accent-fg running-task-open"><div><i class="fa-solid fa-gear fa-spin"></i></div> <div class="running-task-id"></div></div> <div class="running-task-username-box"><div><i class="fa-solid fa-user"></i></div> <div class="running-task-username"></div></div> <button class="terminate flat accent" title="Stop this task"><i class="fa-solid fa-circle-stop"></i></button> <button class="kill flat error hidden" title="Kill this task"><i class="fa-solid fa-skull-crossbones"></i></button></div>');
             el.find('.running-task-id').text(task.id);
             el.find('.running-task-username').text(task.launched_by);
             el.find('.running-task-box')[0].onclick = function () {
                 openTask(task.id);
+            };
+            el.find('.terminate')[0].onclick = function () {
+                terminateTask(task.id);
             };
             el.find('.kill')[0].onclick = function () {
                 killTask(task.id);
@@ -124,6 +129,7 @@ function openCommand(commandName) {
     $('.task .command-label').text(_commands[commandName].label);
     $('.task .command-name').text(_commands[commandName].name);
     $('.task .command-exec').text(_commands[commandName].exec);
+    $('.task .task-terminate-parent').addClass('hidden');
     $('.task .task-kill-parent').addClass('hidden');
     $('.task .autoscroll-parent').addClass('hidden');
     $('.task .command-run')[0].onclick = function () {
@@ -134,6 +140,9 @@ function openCommand(commandName) {
         setTimeout(function () {
             setAutoscroll(!_autoscroll);
         }, 100);
+    };
+    $('.task .task-terminate')[0].onclick = function () {
+        terminateTask(_openTaskId);
     };
     $('.task .task-kill')[0].onclick = function () {
         killTask(_openTaskId);
@@ -221,6 +230,7 @@ function appendTaskMessage(message) {
         $('.task .command-run-container').addClass('hidden');
         $('.task .task-id').text(message.task_id);
         $('.task .task-id-box').removeClass('hidden');
+        $('.task .task-terminate-parent').removeClass('hidden');
         $('.task .task-kill-parent').removeClass('hidden');
         $('.task .autoscroll-parent').removeClass('hidden');
 
@@ -246,6 +256,16 @@ function appendTaskMessage(message) {
         } else {
             setTaskStatus('error');
         }
+
+    } else if (message.event == 'kill_signal_sent') {
+        let div = $('<div class="diag error-fg"><i class="fa-solid fa-gear"></i> <span></span></div>');
+        div.find('span').text("Sending kill signal");
+        $('.task .command-output').append(div);
+
+    } else if (message.event == 'signal_sent') {
+        let div = $('<div class="diag"><i class="fa-solid fa-gear"></i> <span></span></div>');
+        div.find('span').text("Sending signal " + message.signal_name + "(" + message.signal + ")");
+        $('.task .command-output').append(div);
 
     } else if (message.event == 'task_killed' || message.event == 'task_timeout') {
         let div = $('<div class="diag error-fg"><i class="fa-solid fa-gear"></i> <span></span></div>');
@@ -275,6 +295,7 @@ function appendTaskMessage(message) {
         $('.task .command-output').append(div);
         $('.task .command-run').removeClass('disabled');
         $('.task .command-run-container').removeClass('hidden');
+        $('.task .task-terminate-parent').addClass('hidden');
         $('.task .task-kill-parent').addClass('hidden');
         $('.task .autoscroll-parent').addClass('hidden');
     }
@@ -293,6 +314,16 @@ function appendTaskMessage(message) {
 function killTask(taskId) {
     let request = new XMLHttpRequest();
     request.open('DELETE', '/api/tasks/' + taskId);
+    request.send();
+}
+
+function terminateTask(taskId) {
+    sendSignal(taskId, SIGTERM);
+}
+
+function sendSignal(taskId, signal) {
+    let request = new XMLHttpRequest();
+    request.open('POST', '/api/tasks/' + taskId + '/signal/' + signal);
     request.send();
 }
 

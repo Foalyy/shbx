@@ -1,6 +1,6 @@
 use crate::{
     api::ApiKey,
-    command::{Command, CommandName, CommandResult, Task, TaskId},
+    command::{Command, CommandName, CommandResult, Task, TaskId, UnixSignal},
     user::User,
 };
 
@@ -81,6 +81,15 @@ pub enum Response {
 
     #[response(status = 500)]
     UnableToKillTask(Json<MessageResponse>),
+
+    #[response(status = 400)]
+    InvalidSignal(Json<MessageResponse>),
+
+    #[response(status = 200)]
+    SignalSent(Json<MessageResponse>),
+
+    #[response(status = 500)]
+    UnableToSendSignal(Json<MessageResponse>),
 
     #[response(status = 200)]
     UsersList(Json<Vec<User>>),
@@ -435,6 +444,48 @@ impl Response {
             result: ResultStatus::Error,
             code: ResultCode::InternalServerError,
             message: format!("Unable to send kill signal to task \"{task_id}\""),
+        }
+    }
+
+    /// Return an InvalidSignal response
+    pub fn invalid_signal(signal: i32) -> Self {
+        Self::InvalidSignal(Json(Self::invalid_signal_response(signal)))
+    }
+
+    /// Return the inner [MessageResponse] for a InvalidSignal response
+    pub fn invalid_signal_response(signal: i32) -> MessageResponse {
+        MessageResponse {
+            result: ResultStatus::Error,
+            code: ResultCode::BadRequest,
+            message: format!("Invalid signal : {signal}"),
+        }
+    }
+
+    /// Return a SignalSent response
+    pub fn signal_sent(task_id: &TaskId, signal: UnixSignal) -> Self {
+        Self::SignalSent(Json(Self::signal_sent_response(task_id, signal)))
+    }
+
+    /// Return the inner [MessageResponse] for a SignalSent response
+    pub fn signal_sent_response(task_id: &TaskId, signal: UnixSignal) -> MessageResponse {
+        MessageResponse {
+            result: ResultStatus::Success,
+            code: ResultCode::Ok,
+            message: format!("Signal {signal} sent to task \"{task_id}\""),
+        }
+    }
+
+    /// Return an UnableToSendSignal response
+    pub fn unable_to_send_signal(task_id: &TaskId, signal: UnixSignal) -> Self {
+        Self::UnableToSendSignal(Json(Self::unable_to_send_signal_response(task_id, signal)))
+    }
+
+    /// Return the inner [MessageResponse] for a UnableToSendSignal response
+    pub fn unable_to_send_signal_response(task_id: &TaskId, signal: UnixSignal) -> MessageResponse {
+        MessageResponse {
+            result: ResultStatus::Error,
+            code: ResultCode::InternalServerError,
+            message: format!("Unable to send signal {signal} to task \"{task_id}\""),
         }
     }
 
