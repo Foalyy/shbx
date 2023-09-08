@@ -42,6 +42,7 @@ pub struct CommandConfig {
     pub label: Option<String>,
     pub shell: Option<bool>,
     pub timeout_millis: Option<u64>,
+    pub no_timeout: Option<bool>,
     pub user: Option<String>,
     pub group: Option<String>,
     pub exec: String,
@@ -62,7 +63,7 @@ pub struct Command {
     #[serde(skip)]
     pub shell: bool,
     #[serde(skip)]
-    pub timeout_millis: u64,
+    pub timeout_millis: Option<u64>,
     #[serde(skip)]
     pub user: Option<unix_users::User>,
     #[serde(skip)]
@@ -181,13 +182,22 @@ impl Command {
             return Err(CommandConfigError::WorkingDirIsNotADir(name, working_dir));
         }
 
+        // Optional timeout
+        let timeout_millis = if command_config.no_timeout.unwrap_or(false) {
+            None
+        } else {
+            Some(
+                command_config
+                    .timeout_millis
+                    .unwrap_or(config.timeout_millis),
+            )
+        };
+
         Ok(Self {
             name,
             label,
             shell: command_config.shell.unwrap_or(false),
-            timeout_millis: command_config
-                .timeout_millis
-                .unwrap_or(config.timeout_millis),
+            timeout_millis,
             user,
             group,
             exec,
@@ -642,7 +652,7 @@ pub struct TaskProcess {
     pub task: Task,
     pub process_command: process::Command,
     pub start_time: Option<Instant>,
-    pub timeout_millis: u64,
+    pub timeout_millis: Option<u64>,
     handle: Option<JoinHandle<()>>,
     pub output: Arc<RwLock<Vec<TaskOutputMessage>>>,
     pub output_channel: broadcast::Sender<TaskOutputMessage>,
@@ -709,7 +719,7 @@ impl TaskProcess {
         let monitoring_channel = self.monitoring_channel.clone();
 
         // Maximum duration that the process can take to execute
-        let timeout_duration = Duration::from_millis(self.timeout_millis);
+        let timeout_duration = self.timeout_millis.map(Duration::from_millis);
 
         // Create the async task
         let handle = tokio::spawn(async move {
@@ -729,7 +739,8 @@ impl TaskProcess {
             }
 
             // Create a simple sleep task that will be used as a timeout
-            let timeout = time::sleep(timeout_duration);
+            let timeout_enabled = timeout_duration.is_some();
+            let timeout = time::sleep(timeout_duration.unwrap_or(Duration::MAX));
             tokio::pin!(timeout);
 
             // Get the output of the child process as an async Stream
@@ -761,9 +772,9 @@ impl TaskProcess {
                             None => { break } // Exit the loop to terminate the async task
                         }
                     }
-                    () = &mut timeout => {
+                    () = &mut timeout, if timeout_enabled => {
                         // Timeout expired
-                        append_message(TaskOutputMessage::Timeout(timeout_duration.as_millis()), &output, &channel).await;
+                        append_message(TaskOutputMessage::Timeout(timeout_duration.unwrap_or(Duration::MAX).as_millis()), &output, &channel).await;
                         break;
                     }
                     _ = &mut kill_signal_recv, if !kill_signal_received => {

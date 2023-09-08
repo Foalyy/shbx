@@ -203,9 +203,10 @@ Here is the exhaustive list of available options when defining commands :
     - the shell to use can be specified in the main config file, which is set to `sh -c` by default
 - `TIMEOUT_MILLIS` : maximum duration that this command can take to execute, after which the process is killed
     - if unset, the `TIMEOUT_MILLIS` settings from the main config file is used, which is set to 10 seconds by default
+- `NO_TIMEOUT` (boolean) : if set to true, the timeout is disabled and the task will be able to run indefinitely (default false)
 - `USER` : the user to run this process as
 - `GROUP` : the group to run this process as
-- `NO_CONCURRENT_EXEC` (boolean) : prevent this command to be launched multiple times in parallel
+- `NO_CONCURRENT_EXEC` (boolean) : prevent this command to be launched multiple times in parallel (default false)
     - especially useful for commands that start long-running services, or commands that process files that could get corrupted if accessed concurrently (for instance, a command that recompiles a project)
 
 More examples of a variety of possible commands are available in `commands.config.sample`.
