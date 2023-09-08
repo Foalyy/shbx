@@ -54,7 +54,7 @@ Example of how to install ShellBox on Debian 11 in `/var/www/shbx`, customize th
 
 ```
 # cd /var/www/
-# wget https://github.com/Foalyy/shbx/releases/download/v0.2.1/shbx_0.2.1.zip
+# wget https://github.com/Foalyy/shbx/releases/download/0.2.1/shbx_0.2.1.zip
 # unzip shbx_0.2.1.zip
 # mv shbx_0.2.1 shbx
 # cd shbx
