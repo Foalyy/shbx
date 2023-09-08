@@ -210,12 +210,11 @@ pub async fn route_commands_list(
     commands: &State<RwLock<Commands>>,
     config: &State<Config>,
 ) -> Response {
-    let mut available_commands = {
+    let available_commands = {
         let mut commands = commands.write().await;
         commands.try_reload(config).await;
         commands.available_to(&user)
     };
-    available_commands.sort_unstable_by_key(|k| k.name.clone());
     Response::CommandsList(Json(available_commands))
 }
 

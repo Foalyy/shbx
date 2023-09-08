@@ -282,6 +282,7 @@ pub enum CommandConfigError {
 /// A manageable container for a list of [Command]s
 #[derive(Debug)]
 pub struct Commands {
+    commands_index: Vec<CommandName>,
     commands: HashMap<CommandName, Command>,
     modified_time: SystemTime,
 }
@@ -290,6 +291,7 @@ impl Commands {
     /// Create a new commands container
     pub async fn read_or_exit(config: &Config) -> Self {
         let mut commands = Self {
+            commands_index: Vec::new(),
             commands: HashMap::new(),
             modified_time: std::time::UNIX_EPOCH,
         };
@@ -334,9 +336,11 @@ impl Commands {
             let commands_config: CommandsConfig = toml::from_str(file_content.as_str())?;
 
             // Check and map the parsed CommandsConfig to a HashMap of Command's indexed by the command name
+            let mut commands_index = Vec::new();
             let mut commands = HashMap::new();
             for command_config in &commands_config.commands {
                 let command = Command::from_config(command_config, config)?;
+                commands_index.push(command.name.clone());
                 let previous_entry = commands.insert(command.name.clone(), command);
                 if let Some(previous_entry) = previous_entry {
                     return Err(Error::DuplicateCommandName(previous_entry.name));
@@ -344,6 +348,7 @@ impl Commands {
             }
 
             // Update self
+            self.commands_index = commands_index;
             self.commands = commands;
             self.modified_time = file_modified_time;
             Ok(true)
@@ -370,10 +375,10 @@ impl Commands {
 
     /// Get the list of command available to the given [User]
     pub fn available_to(&self, user: &User) -> Vec<Command> {
-        self.iter()
-            .filter_map(|(name, command)| {
+        self.commands_index.iter()
+            .filter_map(|name| {
                 if user.role == UserRole::Admin || user.commands.contains(name) {
-                    Some(command.clone())
+                    self.commands.get(name).cloned()
                 } else {
                     None
                 }
