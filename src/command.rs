@@ -40,6 +40,7 @@ pub type CommandName = String;
 pub struct CommandConfig {
     pub name: CommandName,
     pub label: Option<String>,
+    pub command_group: Option<String>,
     pub shell: Option<bool>,
     pub timeout_millis: Option<u64>,
     pub no_timeout: Option<bool>,
@@ -59,6 +60,8 @@ pub struct Command {
     pub name: CommandName,
     /// Human-readable label displayed to the user
     pub label: String,
+    /// Optional group that this command belongs to
+    pub command_group: Option<String>,
     /// Execute this command inside a shell
     #[serde(skip)]
     pub shell: bool,
@@ -196,6 +199,7 @@ impl Command {
         Ok(Self {
             name,
             label,
+            command_group: command_config.command_group.clone(),
             shell: command_config.shell.unwrap_or(false),
             timeout_millis,
             user,
@@ -375,7 +379,8 @@ impl Commands {
 
     /// Get the list of command available to the given [User]
     pub fn available_to(&self, user: &User) -> Vec<Command> {
-        self.commands_index.iter()
+        self.commands_index
+            .iter()
             .filter_map(|name| {
                 if user.role == UserRole::Admin || user.commands.contains(name) {
                     self.commands.get(name).cloned()

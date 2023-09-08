@@ -48,7 +48,7 @@
                     </div>
                 </div>
             </div>
-            <div class="container commands">
+            <div class="commands">
             </div>
         </div>
         <div class="overlay-task hidden" onclick="closeCommand()">

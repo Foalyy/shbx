@@ -1,5 +1,6 @@
 const SIGTERM = 15;
 
+let _commandGroups = [];
 let _commandNames = [];
 let _commands = {};
 let _tasksIds = [];
@@ -44,22 +45,47 @@ function loadCommands() {
     request.onreadystatechange = function () {
         if (this.readyState == 4) {
             if (this.status == 200) {
+                _commandGroups = [];
                 _commandNames = [];
                 _commands = {};
                 let commands = JSON.parse(this.response);
                 let container = $('.commands');
                 for (let command of commands) {
+                    if (_commandGroups.indexOf(command.command_group) < 0) {
+                        _commandGroups.push(command.command_group);
+                    }
                     _commandNames.push(command.name);
                     _commands[command.name] = command;
-                    let el = $('.command-template .command-container').clone();
-                    el.prop('id', command.name.trim());
-                    el.find('.command-name').text(command.name);
-                    el.find('.command-label').text(command.label);
-                    el.find('.command-exec').text(command.exec);
-                    el.find('.command-run')[0].onclick = function () {
-                        openCommand(command.name);
-                    };
-                    container.append(el);
+                }
+                for (let [index, group] of _commandGroups.entries()) {
+                    let groupContainer = $('<div class="container commands-group group-' + index + '"></div>')
+                    if (group || _commandGroups.length >= 2) {
+                        let el = $('<div class="command-group-title"><i class="fa-solid fa-folder-open fa-fw"></i><i class="fa-solid fa-folder-closed fa-fw"></i> <span></span></div>');
+                        let name = "Default group";
+                        if (group) {
+                            name = group;
+                        }
+                        el.find('span').text(name);
+                        el[0].onclick = function () {
+                            toggleGroup(index);
+                        };
+                        groupContainer.append(el);
+                    }
+                    for (let commandName of _commandNames) {
+                        let command = _commands[commandName];
+                        if (command.command_group == group) {
+                            let el = $('.command-template .command-container').clone();
+                            el.prop('id', command.name.trim());
+                            el.find('.command-name').text(command.name);
+                            el.find('.command-label').text(command.label);
+                            el.find('.command-exec').text(command.exec);
+                            el.find('.command-run')[0].onclick = function () {
+                                openCommand(command.name);
+                            };
+                            groupContainer.append(el);
+                        }
+                    }
+                    container.append(groupContainer);
                 }
                 $('.overlay-loading').addClass('hidden');
                 loadTasks();
@@ -334,6 +360,15 @@ function setAutoscroll(autoscroll) {
         $('.autoscroll').removeClass('accent');
     }
     _autoscroll = autoscroll;
+}
+
+function toggleGroup(index) {
+    let el = $('.group-' + index);
+    if (el.hasClass('closed')) {
+        el.removeClass('closed');
+    } else {
+        el.addClass('closed');
+    }
 }
 
 function logout() {

@@ -71,6 +71,39 @@
     padding: 1em;
 }
 
+.command-group-title {
+    margin: 0.8em 1.5em;
+    font-size: 150%;
+    opacity: 0.6;
+    cursor: pointer;
+    transition: opacity 200ms ease-in-out, margin-left 200ms ease-in-out;
+}
+
+.command-group-title:hover {
+    opacity: 0.9;
+    margin-left: 1.7em;
+}
+
+.command-group-title span {
+    margin-left: 0.3em;
+}
+
+.commands-group.closed .command-group-title .fa-folder-open {
+    display: none;
+}
+
+.commands-group:not(.closed) .command-group-title .fa-folder-closed {
+    display: none;
+}
+
+.commands-group.closed .command-container {
+    display: none;
+}
+
+.commands-group.closed {
+    margin-bottom: 1em;
+}
+
 .command {
     margin-bottom: 1em;
     padding: 1em 1.5em;
