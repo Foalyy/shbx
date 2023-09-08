@@ -71,6 +71,13 @@ Settings that you may want to customize now include :
 - `ADDRESS` : it is recommended to install ShellBox behind a reverse proxy (provided by Apache or Nginx for instance), in which case leave the default value "127.0.0.1", but if you want direct access you will need to set "0.0.0.0" to open the service on every interfaces
 - `PORT` : the default port to bind to is **8000** but it can be customized here
 
+Create an empty `commands.config` definition to start with, or copy the sample file with a few simple commands already defined :
+
+```
+# cp commands.config.sample commands.config
+# vim commands.config
+```
+
 Start ShellBox to make sure everything works fine. **Take note of the admin's password and API key** that are generated and printed during the first launch.
 
 ```
@@ -102,7 +109,16 @@ Get the source code :
 # cargo build --release
 ```
 
-Cargo will automatically fetch dependencies and compile everything. The app can then be started using :
+Cargo will automatically fetch dependencies and compile everything. Copy and take a look at the config files :
+
+```
+# cp shbx.config.sample shbx.config
+# cp commands.config.sample commands.config
+```
+
+You may want to customize them before starting `shbx`, especially the `ADDRESS` and `PORT` options. Please refer to the *Main configuration file* section below.
+
+The app can then be started using :
 
 ```
 # cargo run --release
@@ -113,8 +129,6 @@ Create a symlink to the binary into the main directory :
 ```
 # ln -s target/release/shbx shbx
 ```
-
-You may want to customize the config before starting `shbx`, especially the `ADDRESS` and `PORT` options. Please refer to the *Main configuration file* section below.
 
 
 ### 1.2/ Start as a daemon
@@ -241,7 +255,7 @@ Here is the exhaustive list of available options when defining commands :
 - `NO_CONCURRENT_EXEC` (boolean) : prevent this command to be launched multiple times in parallel (default false)
     - especially useful for commands that start long-running services, or commands that process files that could get corrupted if accessed concurrently (for instance, a command that recompiles a project)
 
-More examples of a variety of possible commands are available in `commands.config.sample`.
+More examples of a variety of possible commands are available in `examples/commands.config`.
 
 
 ## 3/ Main configuration file
