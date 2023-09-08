@@ -50,6 +50,14 @@
             </div>
             <div class="commands">
             </div>
+            <div class="no-commands hidden container">
+                <div class="row">
+                    <div class="col error-fg no-commands-icon"><i class="fa-solid fa-file-circle-question"></i></div>
+                </div>
+                <div class="row">
+                    <div class="col error-fg">No command currently available, please ask an admin.</div>
+                </div>
+            </div>
         </div>
         <div class="overlay-task hidden" onclick="closeCommand()">
             <div class="container" onclick="event.stopPropagation()">

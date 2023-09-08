@@ -1,7 +1,38 @@
 [[command]]
-NAME = "date"
+COMMAND_GROUP = "Server status"
+NAME = "server_date"
 LABEL = "Return the server date"
 EXEC = "date"
+
+[[command]]
+COMMAND_GROUP = "Server status"
+NAME = "server_uptime"
+LABEL = "Return the server uptime"
+EXEC = "uptime"
+
+[[command]]
+COMMAND_GROUP = "Server management"
+NAME = "restart_nginx"
+LABEL = "Restart Nginx"
+EXEC = "systemctl restart nginx"
+
+[[command]]
+COMMAND_GROUP = "Server management"
+NAME = "status_nginx"
+LABEL = "Status of Nginx"
+EXEC = "systemctl status nginx"
+
+[[command]]
+COMMAND_GROUP = "Server management"
+NAME = "restart_mysql"
+LABEL = "Restart MySQL"
+EXEC = "systemctl restart mysql"
+
+[[command]]
+COMMAND_GROUP = "Server management"
+NAME = "status_mysql"
+LABEL = "Status of MySQL"
+EXEC = "systemctl status mysql"
 
 [[command]]
 NAME = "hi"
@@ -9,11 +40,6 @@ LABEL = "Say hi !"
 SHELL = true
 EXEC = "echo \"[`date`] hi !\" | tee -a hi.txt"
 WORKING_DIR = "/tmp"
-
-[[command]]
-NAME = "restart_nginx"
-LABEL = "Restart Nginx"
-EXEC = "systemctl restart nginx"
 
 # [[command]]
 # NAME = "custom_script"

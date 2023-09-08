@@ -195,6 +195,8 @@ EXEC = "systemctl restart mysql"
 Here is the exhaustive list of available options when defining commands :
 - `NAME` (mandatory) : internal name for the command, can only contain alphanumeric characters and underscores
 - `LABEL` : descriptive name for the command, returned to the users through the API and displayed on the Web UI
+- `COMMAND_GROUP` : an optional name for a group in which the command will belong
+  - commands that have the same group name will be grouped together in the Web UI
 - `EXEC` (mandatory) : the command to execute, can be the path to an executable file (with arguments), or a shell command (if `SHELL` is set to `true`)
 - `WORKING_DIR` : absolute path to the directory that the command will be launched into
     - if unset and the command points to an executable file, the parent directory of this file is used as the working directory

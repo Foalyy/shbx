@@ -49,46 +49,51 @@ function loadCommands() {
                 _commandNames = [];
                 _commands = {};
                 let commands = JSON.parse(this.response);
-                let container = $('.commands');
-                for (let command of commands) {
-                    if (_commandGroups.indexOf(command.command_group) < 0) {
-                        _commandGroups.push(command.command_group);
-                    }
-                    _commandNames.push(command.name);
-                    _commands[command.name] = command;
-                }
-                for (let [index, group] of _commandGroups.entries()) {
-                    let groupContainer = $('<div class="container commands-group group-' + index + '"></div>')
-                    if (group || _commandGroups.length >= 2) {
-                        let el = $('<div class="command-group-title"><i class="fa-solid fa-folder-open fa-fw"></i><i class="fa-solid fa-folder-closed fa-fw"></i> <span></span></div>');
-                        let name = "Default group";
-                        if (group) {
-                            name = group;
+                if (commands.length == 0) {
+                    $('.no-commands').removeClass('hidden');
+                } else {
+                    $('.no-commands').addClass('hidden');
+                    let container = $('.commands');
+                    for (let command of commands) {
+                        if (_commandGroups.indexOf(command.command_group) < 0) {
+                            _commandGroups.push(command.command_group);
                         }
-                        el.find('span').text(name);
-                        el[0].onclick = function () {
-                            toggleGroup(index);
-                        };
-                        groupContainer.append(el);
+                        _commandNames.push(command.name);
+                        _commands[command.name] = command;
                     }
-                    for (let commandName of _commandNames) {
-                        let command = _commands[commandName];
-                        if (command.command_group == group) {
-                            let el = $('.command-template .command-container').clone();
-                            el.prop('id', command.name.trim());
-                            el.find('.command-name').text(command.name);
-                            el.find('.command-label').text(command.label);
-                            el.find('.command-exec').text(command.exec);
-                            el.find('.command-run')[0].onclick = function () {
-                                openCommand(command.name);
+                    for (let [index, group] of _commandGroups.entries()) {
+                        let groupContainer = $('<div class="container commands-group group-' + index + '"></div>')
+                        if (group || _commandGroups.length >= 2) {
+                            let el = $('<div class="command-group-title"><i class="fa-solid fa-folder-open fa-fw"></i><i class="fa-solid fa-folder-closed fa-fw"></i> <span></span></div>');
+                            let name = "Default group";
+                            if (group) {
+                                name = group;
+                            }
+                            el.find('span').text(name);
+                            el[0].onclick = function () {
+                                toggleGroup(index);
                             };
                             groupContainer.append(el);
                         }
+                        for (let commandName of _commandNames) {
+                            let command = _commands[commandName];
+                            if (command.command_group == group) {
+                                let el = $('.command-template .command-container').clone();
+                                el.prop('id', command.name.trim());
+                                el.find('.command-name').text(command.name);
+                                el.find('.command-label').text(command.label);
+                                el.find('.command-exec').text(command.exec);
+                                el.find('.command-run')[0].onclick = function () {
+                                    openCommand(command.name);
+                                };
+                                groupContainer.append(el);
+                            }
+                        }
+                        container.append(groupContainer);
                     }
-                    container.append(groupContainer);
+                    loadTasks();
                 }
                 $('.overlay-loading').addClass('hidden');
-                loadTasks();
             } else if (this.status == 401 || this.status == 403) {
                 $('.overlay-login').removeClass('hidden');
                 $('.overlay-loading').addClass('hidden');
