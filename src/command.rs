@@ -295,7 +295,7 @@ impl Commands {
             }
             Err(error) => {
                 eprintln!(
-                    "Error, unable to reload the commands config file \"{}\" : {error}",
+                    "Error, unable to load the commands config file \"{}\" : {error}",
                     config.commands_path.display()
                 );
                 std::process::exit(-1);

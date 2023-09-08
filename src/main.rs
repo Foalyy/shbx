@@ -60,6 +60,7 @@ async fn rocket() -> _ {
         })
         .unwrap();
     let port = config.port;
+    let enable_web_ui = config.enable_web_ui;
 
     // Send some of the settings to Rocket
     let figment = rocket::Config::figment()
@@ -80,8 +81,13 @@ async fn rocket() -> _ {
     Tasks::start_monitoring_task(Arc::downgrade(&tasks)).await;
 
     // Let's go to spaaace !
-    rocket::custom(figment)
-        .mount("/", routes![index, route_login, route_logout])
+    let mut rocket_builder = rocket::custom(figment);
+    if enable_web_ui {
+        rocket_builder = rocket_builder
+            .mount("/", routes![index, route_login, route_logout])
+            .mount("/static", FileServer::from("static/").rank(0));
+    }
+    rocket_builder
         .mount(
             "/api/",
             routes![
@@ -114,7 +120,6 @@ async fn rocket() -> _ {
                 api::catcher_internal_server_error,
             ],
         )
-        .mount("/static", FileServer::from("static/").rank(0))
         .mount(
             "/",
             SwaggerUi::new("/api/doc/<_..>").url("/api-docs/openapi.json", ApiDoc::openapi()),
@@ -136,7 +141,10 @@ async fn rocket() -> _ {
         .attach(Template::fairing())
         .attach(AdHoc::on_liftoff("Startup message", move |_| {
             Box::pin(async move {
-                println!("ShellBox started on {address}:{port}");
+                println!(
+                    "ShellBox started on {address}:{port} {} Web UI",
+                    if enable_web_ui { "with" } else { "WITHOUT" }
+                );
                 println!("API documentation available on /api/doc and /api/rapidoc");
             })
         }))

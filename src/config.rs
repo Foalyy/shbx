@@ -50,6 +50,12 @@ pub struct Config {
     #[serde(default = "config_default_timeout_millis")]
     pub timeout_millis: u64,
 
+    /// Provide a user-friendly Web UI to launch commands and manage tasks. If disabled,
+    /// only the API will be available.
+    /// Default : true
+    #[serde(default = "config_default_enable_web_ui")]
+    pub enable_web_ui: bool,
+
     /// Internal field
     #[serde(skip)]
     pub shell_parsed: (String, Vec<String>),
@@ -148,6 +154,10 @@ fn config_default_shell() -> String {
 
 fn config_default_timeout_millis() -> u64 {
     10000
+}
+
+fn config_default_enable_web_ui() -> bool {
+    true
 }
 
 /// Try to open the .secret file in the app's directory and return
