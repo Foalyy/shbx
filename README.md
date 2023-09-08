@@ -48,9 +48,39 @@
 
 ## 1/ Installation
 
-### 1.1/ *(Option A)* Install using a release
+### 1.1/ *(Option A)* Install using a release (recommended)
 
-*Coming soon-ish*
+Example of how to install ShellBox on Debian 11 in `/var/www/shbx`, customize the paths as needed.
+
+```
+# cd /var/www/
+# wget https://github.com/Foalyy/shbx/releases/download/v0.2.1/shbx_0.2.1.zip
+# unzip shbx_0.2.1.zip
+# mv shbx_0.2.1 shbx
+# cd shbx
+```
+
+Copy the sample configuration file and take a look at it, every setting is documented inside :
+
+```
+# cp shbx.config.sample shbx.config
+# vim shbx.config
+```
+
+Settings that you may want to customize now include :
+- `ADDRESS` : it is recommended to install ShellBox behind a reverse proxy (provided by Apache or Nginx for instance), in which case leave the default value "127.0.0.1", but if you want direct access you will need to set "0.0.0.0" to open the service on every interfaces
+- `PORT` : the default port to bind to is **8000** but it can be customized here
+
+Start ShellBox to make sure everything works fine. **Take note of the admin's password and API key** that are generated and printed during the first launch.
+
+```
+# ./shbx
+```
+
+*In case you missed the password and API key, you can start again by deleting `shbx.sqlite`.*
+
+ShellBox is now running, but for a more permanent installation, keep reading [section 1.2](#12-start-as-a-daemon).
+
 
 ### 1.1/ *(Option B)* Build from source
 
