@@ -62,7 +62,7 @@ function loadCommands() {
                         _commands[command.name] = command;
                     }
                     for (let [index, group] of _commandGroups.entries()) {
-                        let groupContainer = $('<div class="container commands-group group-' + index + '"></div>')
+                        let groupContainer = $('<div class="container-md commands-group group-' + index + '"></div>')
                         if (group || _commandGroups.length >= 2) {
                             let el = $('<div class="command-group-title"><i class="fa-solid fa-folder-open fa-fw"></i><i class="fa-solid fa-folder-closed fa-fw"></i> <span></span></div>');
                             let name = "Default group";
@@ -82,6 +82,9 @@ function loadCommands() {
                                 el.prop('id', command.name.trim());
                                 el.find('.command-name').text(command.name);
                                 el.find('.command-label').text(command.label);
+                                if (command.working_dir) {
+                                    el.find('.command-working-dir').text(command.working_dir);
+                                }
                                 el.find('.command-exec').text(command.exec);
                                 el.find('.command-run')[0].onclick = function () {
                                     openCommand(command.name);
@@ -159,6 +162,9 @@ function openCommand(commandName) {
     $('.task .command-output').html('');
     $('.task .command-label').text(_commands[commandName].label);
     $('.task .command-name').text(_commands[commandName].name);
+    if (_commands[commandName].working_dir) {
+        $('.task .command-working-dir').text(_commands[commandName].working_dir);
+    }
     $('.task .command-exec').text(_commands[commandName].exec);
     $('.task .task-terminate-parent').addClass('hidden');
     $('.task .task-kill-parent').addClass('hidden');

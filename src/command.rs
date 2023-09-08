@@ -79,6 +79,8 @@ pub struct Command {
     pub working_dir: PathBuf,
     #[serde(skip)]
     pub no_concurrent_exec: bool,
+    #[serde(rename = "working_dir", skip_serializing_if = "Option::is_none")]
+    pub explicit_working_dir: Option<PathBuf>,
 }
 
 /// Path and arguments of an executable command
@@ -211,6 +213,7 @@ impl Command {
             },
             working_dir,
             no_concurrent_exec: command_config.no_concurrent_exec,
+            explicit_working_dir: command_config.working_dir.clone(),
         })
     }
 

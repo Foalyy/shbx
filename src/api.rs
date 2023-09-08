@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fmt::Display,
+    path::PathBuf,
     sync::Arc,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
@@ -197,7 +198,7 @@ impl Default for SessionStore {
     responses(
         (status = OK, description = "List of available commands", body = Vec<Command>,
             example = json!(vec![
-                Command { name: "custom_script".to_string(), label: "Launch a custom script".to_string(), exec: "/usr/bin/my_script.sh".to_string(), ..Default::default() },
+                Command { name: "custom_script".to_string(), label: "Launch a custom script".to_string(), exec: "/usr/bin/my_script.sh".to_string(), explicit_working_dir: Some(PathBuf::from("/home/john/my_project/")), ..Default::default() },
                 Command { name: "restart_my_service".to_string(), label: "Restart the service".to_string(), exec: "systemctl restart my_service".to_string(), ..Default::default() },
             ])
         ),
