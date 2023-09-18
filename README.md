@@ -464,6 +464,8 @@ For users who prefer a graphical interface over the command line (for some obscu
 
 :information_source: *Note that user management is not yet implemented in this UI and has to be performed through the API.*
 
+![Web UI](https://silica.io/wp-content/uploads/2023/09/shellbox.png)
+
 
 ## :lock: 6/ Security
 
